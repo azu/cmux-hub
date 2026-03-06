@@ -7,11 +7,12 @@
     "dev": "CMUX_HUB_DRY_RUN=true bun --hot src/index.ts",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun run build.ts",
-    "test": "bun test",
+    "test": "bun test src server",
     "lint": "oxlint .",
     "fmt": "oxfmt --write .",
     "fmt:check": "oxfmt --check .",
-    "typecheck": "bun run --bun tsc --noEmit"
+    "typecheck": "bun run --bun tsc --noEmit",
+    "test:e2e": "bunx playwright test"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
@@ -26,6 +27,7 @@
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/bun": "latest",
     "@types/react": "^19",
     "@types/react-dom": "^19",

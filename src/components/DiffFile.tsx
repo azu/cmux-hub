@@ -25,7 +25,7 @@ export function DiffFile({ file, onComment }: Props) {
       : "bg-yellow-700";
 
   return (
-    <div className="border border-gray-700 rounded-lg overflow-hidden mb-4">
+    <div data-testid="diff-file" className="border border-gray-700 rounded-lg overflow-hidden mb-4">
       <div
         className="flex items-center gap-2 px-4 py-2 bg-gray-800 border-b border-gray-700 cursor-pointer hover:bg-gray-750"
         onClick={() => setCollapsed(!collapsed)}

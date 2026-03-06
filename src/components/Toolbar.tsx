@@ -55,7 +55,7 @@ export function Toolbar({ branch, onRefresh }: Props) {
   };
 
   return (
-    <div className="border-b border-gray-700 bg-gray-900 px-4 py-2">
+    <div data-testid="toolbar" className="border-b border-gray-700 bg-gray-900 px-4 py-2">
       <div className="flex items-center gap-3">
         <span className="text-gray-400 text-sm font-mono">{branch}</span>
         <div className="flex-1" />

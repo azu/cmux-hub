@@ -50,7 +50,7 @@ export function DiffView({ diff, loading, error, onRefresh }: Props) {
   }
 
   return (
-    <div className="space-y-2">
+    <div data-testid="diff-view" className="space-y-2">
       {diff.map((file, idx) => (
         <DiffFile key={`${file.newPath}-${idx}`} file={file} onComment={handleComment} />
       ))}
