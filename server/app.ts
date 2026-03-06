@@ -333,8 +333,12 @@ export function createApp(deps: AppDeps) {
         return undefined;
       }
 
-      // Unmatched routes: return 404
-      return new Response("Not Found", { status: 404 });
+      // Let Bun handle bundled assets (JS/CSS from HTML entry)
+      // Return 404 only for known non-asset paths to suppress console errors
+      if (url.pathname === "/favicon.ico") {
+        return new Response(null, { status: 204 });
+      }
+      return undefined;
     },
 
     development: false,
