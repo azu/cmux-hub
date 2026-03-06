@@ -333,7 +333,8 @@ export function createApp(deps: AppDeps) {
         return undefined;
       }
 
-      return undefined;
+      // Unmatched routes: return 404
+      return new Response("Not Found", { status: 404 });
     },
 
     development: false,
