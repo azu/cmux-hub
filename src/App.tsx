@@ -74,7 +74,7 @@ export default function App() {
           setPrComments([]);
         }
       })
-      .catch(() => {});
+      .catch((e) => console.error(new Error("Failed to fetch PR", { cause: e })));
   }, []);
 
   useEffect(() => {
@@ -91,7 +91,7 @@ export default function App() {
 
   const refreshAll = useCallback(() => {
     refresh();
-    api.getStatus().then((s) => setBranch(s.branch)).catch((e) => console.error("Failed to fetch branch status", { cause: e }));
+    api.getStatus().then((s) => setBranch(s.branch)).catch((e) => console.error(new Error("Failed to fetch branch status", { cause: e })));
     fetchPR();
   }, [refresh, fetchPR]);
 
