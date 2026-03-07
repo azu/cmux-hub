@@ -1,106 +1,60 @@
 
+# cmux-hub
+
+Diff viewer for cmux. React frontend + Bun server, communicating with cmux via Unix domain socket.
+
+## Runtime
+
 Default to using Bun instead of Node.js.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Use `bunx <package> <command>` instead of `npx <package> <command>`
-- Bun automatically loads .env, so don't use dotenv.
+- `bun test src server` to run tests (scoped to avoid Playwright conflicts)
+- `bun --hot src/cli.ts` for development with hot reload
+- `bun run build:compile` to build standalone binary
+- Pre-commit hook runs secretlint. Use generic paths (e.g. `/home/user/project`) in tests and docs to avoid homedir detection errors.
 
-## APIs
+## Architecture
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+- `src/cli.ts` — CLI entry point (binary). Resolves target dir, terminal surface, loads actions, starts server, opens cmux browser split
+- `src/index.ts` — Dev entry point (simpler, no cmux integration)
+- `server/app.ts` — API routes and WebSocket handling
+- `server/actions.ts` — Action type definitions, validation, shell escaping
+- `src/components/` — React components (Toolbar, DiffView, DiffFile, DiffLine)
 
-## Testing
+## Actions
 
-Use `bun test` to run tests.
+Toolbar actions are defined externally via `--actions <file|->` JSON. Type is required.
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
+```ts
+type ActionItem = {
+  label: string;
+  command: string;
+  type: "paste-and-enter" | "shell" | "paste";
+  input?: { placeholder: string; variable: string; };
+};
 ```
 
-## Frontend
+- `paste-and-enter`: paste to cmux terminal with Enter
+- `shell`: execute as subshell on server, returns stdout/stderr/exitCode
+- `paste`: paste to cmux terminal without Enter
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+User variables use env prefix method (`KEY='escaped' command`). Built-in vars (`CMUX_HUB_*`) are only added for `shell` type.
 
-Server:
+## Security
 
-```ts#index.ts
-import index from "./index.html"
+Localhost-only server (`127.0.0.1`). Key defenses against browser-based attacks (malicious page → localhost):
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+- Host header validation (DNS rebinding)
+- Origin header validation (CORS/CSRF)
+- Sec-Fetch-Site check on write operations
+- Null Origin rejected on POST from browsers
+- `/api/action` accepts action ID + variables only, not raw commands
+- Variable keys validated against `[A-Za-z_][A-Za-z0-9_]*`
+- File path access restricted to repository cwd
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+## HMR
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+`bun --hot` re-executes top-level code. Use `globalThis` to persist state across reloads (e.g. browser surface ref to avoid opening duplicate windows).
 
-With the following `frontend.tsx`:
+## File Watcher
 
-```tsx#frontend.tsx
-import React from "react";
-import { createRoot } from "react-dom/client";
-
-// import .css files directly and it works
-import './index.css';
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.mdx`.
+Watches both working tree files and git ref changes (commits, branch switches). For git worktrees, resolves and watches the actual git dir separately via `git rev-parse --git-dir`.
