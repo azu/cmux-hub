@@ -159,35 +159,37 @@ export function Toolbar({ branch, onRefresh, hasTerminal, actions, onShowCommitL
 
   return (
     <div data-testid="toolbar" className="border-b border-[#30363d] bg-[#161b22] px-4 py-2">
-      <div className="flex items-center gap-3">
-        <button
-          className="text-[#58a6ff] hover:text-[#79c0ff] text-sm font-mono leading-none"
-          onClick={onShowDiff}
-        >
-          {branch}
-        </button>
-        {onShowCommitList && (
-          <>
-            <span className="text-[#30363d]">/</span>
-            <button
-              className="text-[#848d97] hover:text-[#c9d1d9] text-sm leading-none"
-              onClick={onShowCommitList}
-            >
-              Commits
-            </button>
-          </>
-        )}
-        {onShowPlan && (
-          <>
-            <span className="text-[#30363d]">/</span>
-            <button
-              className="text-[#848d97] hover:text-[#c9d1d9] text-sm leading-none"
-              onClick={onShowPlan}
-            >
-              Plan
-            </button>
-          </>
-        )}
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
+          <button
+            className="text-[#58a6ff] hover:text-[#79c0ff] text-sm font-mono leading-none"
+            onClick={onShowDiff}
+          >
+            {branch}
+          </button>
+          {onShowCommitList && (
+            <>
+              <span className="text-[#30363d]">/</span>
+              <button
+                className="text-[#848d97] hover:text-[#c9d1d9] text-sm leading-none"
+                onClick={onShowCommitList}
+              >
+                Commits
+              </button>
+            </>
+          )}
+          {onShowPlan && (
+            <>
+              <span className="text-[#30363d]">/</span>
+              <button
+                className="text-[#848d97] hover:text-[#c9d1d9] text-sm leading-none"
+                onClick={onShowPlan}
+              >
+                Plan
+              </button>
+            </>
+          )}
+        </div>
         <div className="flex-1" />
         <Button variant="ghost" size="sm" onClick={onRefresh}>
           Refresh
