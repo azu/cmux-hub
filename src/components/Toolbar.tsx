@@ -7,6 +7,7 @@ import { isSubmenu, isActionWithInput } from "../../server/actions.ts";
 
 type Props = {
   branch: string;
+  prUrl?: string | null;
   onRefresh: () => void;
   hasTerminal: boolean;
   actions: MenuItem[];
@@ -151,7 +152,7 @@ function InputRow({
   );
 }
 
-export function Toolbar({ branch, onRefresh, hasTerminal, actions, onShowCommitList }: Props) {
+export function Toolbar({ branch, prUrl, onRefresh, hasTerminal, actions, onShowCommitList }: Props) {
   const [sending, setSending] = useState(false);
   const [activeInput, setActiveInput] = useState<string | null>(null);
 
@@ -159,6 +160,19 @@ export function Toolbar({ branch, onRefresh, hasTerminal, actions, onShowCommitL
     <div data-testid="toolbar" className="border-b border-[#30363d] bg-[#161b22] px-4 py-2">
       <div className="flex items-center gap-3">
         <span className="text-[#58a6ff] text-sm font-mono leading-none">{branch}</span>
+        {prUrl && (
+          <>
+            <span className="text-[#30363d]">/</span>
+            <a
+              href={prUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#3fb950] hover:text-[#56d364] text-sm leading-none"
+            >
+              PR
+            </a>
+          </>
+        )}
         {onShowCommitList && (
           <>
             <span className="text-[#30363d]">/</span>

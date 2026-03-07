@@ -42,6 +42,7 @@ export default function App() {
   const [actions, setActions] = useState<MenuItem[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
   const [prComments, setPrComments] = useState<PRComment[]>([]);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
   const [showCommitList, setShowCommitList] = useState(false);
 
   useEffect(() => {
@@ -53,6 +54,22 @@ export default function App() {
         if (s.actions) setActions(s.actions);
       })
       .catch(() => {});
+    // Fetch PR data immediately on load
+    api
+      .getPR()
+      .then((r) => {
+        const pr = r.pr as { url?: string; number?: number } | null;
+        if (pr?.url) setPrUrl(pr.url);
+        if (pr?.number) {
+          api.getCI().then((c) => {
+            if (c.checks) setChecks(c.checks as Check[]);
+          });
+          api.getPRComments().then((c) => {
+            if (c.comments) setPrComments(c.comments as PRComment[]);
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleWSMessage = useCallback(
@@ -61,7 +78,12 @@ export default function App() {
         refresh();
       }
       if (msg.type === "pr-updated" && msg.data) {
-        const data = msg.data as { checks?: Check[]; comments?: PRComment[] };
+        const data = msg.data as {
+          pr?: { url?: string };
+          checks?: Check[];
+          comments?: PRComment[];
+        };
+        if (data.pr?.url) setPrUrl(data.pr.url);
         if (data.checks) setChecks(data.checks);
         if (data.comments) setPrComments(data.comments);
       }
@@ -80,6 +102,7 @@ export default function App() {
       )}
       <Toolbar
         branch={branch}
+        prUrl={prUrl}
         onRefresh={refresh}
         hasTerminal={hasTerminal}
         actions={actions}
