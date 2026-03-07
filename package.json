@@ -18,6 +18,7 @@
     "typecheck": "bun run --bun tsc --noEmit",
     "test:e2e": "bunx playwright test e2e/smoke.spec.ts",
     "screenshots": "bunx playwright test e2e/screenshots.spec.ts",
+    "version": "node -e \"const f='cmux-hub-plugin/.claude-plugin/plugin.json';const j=JSON.parse(require('fs').readFileSync(f));j.version=require('./package.json').version;require('fs').writeFileSync(f,JSON.stringify(j,null,2)+'\\n')\" && git add cmux-hub-plugin/.claude-plugin/plugin.json",
     "version:patch": "npm version patch && git push && git push --tags",
     "version:minor": "npm version minor && git push && git push --tags",
     "version:major": "npm version major && git push && git push --tags",

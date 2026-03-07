@@ -96,7 +96,18 @@ cat actions.json | cmux-hub --actions -
 
 ### Usage with cmux + Claude Code
 
-When launched inside cmux, cmux-hub automatically opens a browser split pane and shuts down when the pane closes. Combine with Claude Code hooks to launch cmux-hub on every session.
+When launched inside cmux, cmux-hub automatically opens a browser split pane and shuts down when the pane closes.
+
+#### Plugin (recommended)
+
+Install as a Claude Code plugin. This auto-installs the binary, sets up SessionStart hooks, and copies default actions to `.claude/cmux-hub.json`.
+
+```shell
+/plugin marketplace add azu/cmux-hub
+/plugin install cmux-hub@cmux-hub-marketplace
+```
+
+#### Manual setup
 
 `.claude/cmux-hub.json`:
 
@@ -133,6 +144,7 @@ When launched inside cmux, cmux-hub automatically opens a browser split pane and
 -a, --actions <file>   Toolbar actions JSON file (use - for stdin)
 --dry-run              Don't connect to cmux socket
 --debug                Enable debug logging (also: DEBUG=*)
+-v, --version          Show version
 -h, --help             Show help
 ```
 

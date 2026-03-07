@@ -1,0 +1,13 @@
+{
+  "name": "cmux-hub-marketplace",
+  "owner": {
+    "name": "azu"
+  },
+  "plugins": [
+    {
+      "name": "cmux-hub",
+      "source": "./cmux-hub-plugin",
+      "description": "Browser-based diff viewer for cmux. Auto-launches on session start."
+    }
+  ]
+}

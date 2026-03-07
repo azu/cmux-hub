@@ -10,6 +10,7 @@ import { createAppConfig } from "../server/app.ts";
 import { logger, enableDebug } from "../server/logger.ts";
 import { loadActions, DEFAULT_ACTIONS } from "../server/actions.ts";
 import type { MenuItem } from "../server/actions.ts";
+import pkg from "../package.json" with { type: "json" };
 
 const CMUX_BIN = "/Applications/cmux.app/Contents/Resources/bin/cmux";
 
@@ -21,9 +22,15 @@ const { values, positionals } = parseArgs({
     actions: { type: "string", short: "a" },
     debug: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
+    version: { type: "boolean", short: "v", default: false },
   },
   allowPositionals: true,
 });
+
+if (values.version) {
+  console.log(pkg.version);
+  process.exit(0);
+}
 
 if (positionals[0] === "update") {
   const { runUpdateSafe } = await import("../server/updater.ts");
@@ -44,6 +51,7 @@ Options:
   -a, --actions <file>   JSON file for toolbar actions (use - for stdin)
   --dry-run              Don't connect to cmux socket
   --debug                Enable debug logging
+  -v, --version          Show version
   -h, --help             Show this help
 
 Examples:

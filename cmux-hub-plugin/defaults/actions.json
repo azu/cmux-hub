@@ -1,0 +1,4 @@
+[
+  { "label": "Commit", "type": "paste-and-enter", "command": "commit this change" },
+  { "label": "Create PR", "type": "paste-and-enter", "command": "create a pull request" }
+]
