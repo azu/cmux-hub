@@ -5,9 +5,7 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 
 // Resolve repo dir from the test server's /api/status endpoint
-async function getRepoDir(
-  request: import("@playwright/test").APIRequestContext,
-) {
+async function getRepoDir(request: import("@playwright/test").APIRequestContext) {
   const res = await request.get("/api/status", {
     headers: { host: "127.0.0.1:14568" },
   });

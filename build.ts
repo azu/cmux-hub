@@ -33,7 +33,8 @@ Example:
   process.exit(0);
 }
 
-const toCamelCase = (str: string): string => str.replace(/-([a-z])/g, (_match, c: string) => c.toUpperCase());
+const toCamelCase = (str: string): string =>
+  str.replace(/-([a-z])/g, (_match, c: string) => c.toUpperCase());
 
 const parseValue = (value: string): string | boolean | number | string[] => {
   if (value === "true") return true;

@@ -82,9 +82,7 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
       // Resolve {owner}/{repo} via gh repo view
       const repoRaw = await gh(["repo", "view", "--json", "owner,name"]);
       const repo = JSON.parse(repoRaw) as { owner: { login: string }; name: string };
-      const resolvedQuery = query
-        .replace("{owner}", repo.owner.login)
-        .replace("{repo}", repo.name);
+      const resolvedQuery = query.replace("{owner}", repo.owner.login).replace("{repo}", repo.name);
 
       const raw = await gh([
         "api",

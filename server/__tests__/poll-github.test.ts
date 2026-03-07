@@ -71,7 +71,9 @@ describe("pollGitHub cache behavior", () => {
           data: {
             repository: {
               pullRequest: {
-                commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [] } } } }] },
+                commits: {
+                  nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [] } } } }],
+                },
                 reviewThreads: { nodes: [] },
               },
             },
@@ -110,7 +112,26 @@ describe("pollGitHub cache behavior", () => {
           data: {
             repository: {
               pullRequest: {
-                commits: { nodes: [{ commit: { statusCheckRollup: { contexts: { nodes: [{ name: "ci", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "" }] } } } }] },
+                commits: {
+                  nodes: [
+                    {
+                      commit: {
+                        statusCheckRollup: {
+                          contexts: {
+                            nodes: [
+                              {
+                                name: "ci",
+                                status: "COMPLETED",
+                                conclusion: "SUCCESS",
+                                detailsUrl: "",
+                              },
+                            ],
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
                 reviewThreads: { nodes: [] },
               },
             },

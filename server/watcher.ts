@@ -8,7 +8,10 @@ export type WatcherFactory = (dir: string, callback: WatcherCallback) => { close
 
 function resolveGitDir(cwd: string): string | null {
   try {
-    const result = spawnSync(resolveBin("git"), ["rev-parse", "--git-dir"], { cwd, encoding: "utf-8" });
+    const result = spawnSync(resolveBin("git"), ["rev-parse", "--git-dir"], {
+      cwd,
+      encoding: "utf-8",
+    });
     if (result.status !== 0) return null;
     const gitDir = result.stdout.trim();
     // Absolute or relative path
