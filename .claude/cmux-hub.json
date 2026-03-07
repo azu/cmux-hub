@@ -1,5 +1,13 @@
 [
   { "label": "Commit", "type": "paste-and-enter", "command": "/commit" },
   { "label": "Commit & Push", "type": "paste-and-enter", "command": "/commit-push" },
-  { "label": "Create PR", "type": "paste-and-enter", "command": "/create-pr" }
+  { "label": "Create PR", "type": "paste-and-enter", "command": "/create-pr" },
+  {
+    "label": "Release",
+    "submenu": [
+      { "label": "Patch", "type": "paste-and-enter", "command": "!npm version patch && git push && git push --tags" },
+      { "label": "Minor", "type": "paste-and-enter", "command": "!npm version minor && git push && git push --tags" },
+      { "label": "Major", "type": "paste-and-enter", "command": "!npm version major && git push && git push --tags" }
+    ]
+  }
 ]
