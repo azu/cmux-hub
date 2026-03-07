@@ -44,6 +44,7 @@ export default function App() {
   const [prComments, setPrComments] = useState<PRComment[]>([]);
   const [prUrl, setPrUrl] = useState<string | null>(null);
   const [prTitle, setPrTitle] = useState<string | null>(null);
+  const [prState, setPrState] = useState<string | null>(null);
   const [showCommitList, setShowCommitList] = useState(false);
 
   useEffect(() => {
@@ -59,9 +60,10 @@ export default function App() {
     api
       .getPR()
       .then((r) => {
-        const pr = r.pr as { url?: string; title?: string; number?: number } | null;
+        const pr = r.pr as { url?: string; title?: string; state?: string; number?: number } | null;
         if (pr?.url) setPrUrl(pr.url);
         if (pr?.title) setPrTitle(pr.title);
+        if (pr?.state) setPrState(pr.state);
         if (pr?.number) {
           api.getCI().then((c) => {
             if (c.checks) setChecks(c.checks as Check[]);
@@ -81,13 +83,13 @@ export default function App() {
       }
       if (msg.type === "pr-updated" && msg.data) {
         const data = msg.data as {
-          pr?: { url?: string };
+          pr?: { url?: string; title?: string; state?: string };
           checks?: Check[];
           comments?: PRComment[];
         };
         if (data.pr?.url) setPrUrl(data.pr.url);
-        if ((data.pr as { title?: string })?.title)
-          setPrTitle((data.pr as { title: string }).title);
+        if (data.pr?.title) setPrTitle(data.pr.title);
+        if (data.pr?.state) setPrState(data.pr.state);
         if (data.checks) setChecks(data.checks);
         if (data.comments) setPrComments(data.comments);
       }
@@ -116,7 +118,7 @@ export default function App() {
       >
         {(checks.length > 0 || prUrl) && (
           <div className="mb-4">
-            <CIStatus checks={checks} prTitle={prTitle} prUrl={prUrl} />
+            <CIStatus checks={checks} prTitle={prTitle} prUrl={prUrl} prState={prState} />
           </div>
         )}
         <DiffView
