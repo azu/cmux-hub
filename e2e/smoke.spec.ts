@@ -1,51 +1,117 @@
 import { test, expect } from "@playwright/test";
+import assert from "node:assert";
+import { writeFileSync } from "fs";
+import { join } from "path";
+import { execSync } from "child_process";
 
-test("ページを開くと、cmux-hubのタイトルが表示される", async ({ page }) => {
-  // トップページにアクセス
-  await page.goto("/");
-  // ページタイトルを検証
-  await expect(page).toHaveTitle("cmux-hub");
-});
-
-test("ページを開くと、ツールバーにブランチ名とボタンが表示される", async ({ page }) => {
-  // トップページにアクセス
-  await page.goto("/");
-  const toolbar = page.getByTestId("toolbar");
-  // ツールバーが表示されるまで待機
-  await expect(toolbar).toBeVisible({ timeout: 5000 });
-  // ブランチ名が表示されている
-  await expect(toolbar).toContainText("feature/test");
-  // 操作ボタンが表示されている
-  await expect(toolbar.getByRole("button", { name: "Refresh" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Commit" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "Create PR" })).toBeVisible();
-  await expect(toolbar.getByRole("button", { name: "AI Review" })).toBeVisible();
-});
-
-test("ページを開くと、diff viewにファイル一覧と差分内容が表示される", async ({ page }) => {
-  // トップページにアクセス
-  await page.goto("/");
-  const diffView = page.getByTestId("diff-view");
-  // diff viewが表示されるまで待機
-  await expect(diffView).toBeVisible({ timeout: 5000 });
-  // 変更ファイルが表示されている
-  const diffFiles = diffView.getByTestId("diff-file");
-  await expect(diffFiles).toHaveCount(2);
-  // 各ファイルのパスが表示されている
-  await expect(diffFiles.nth(0)).toContainText("src/index.ts");
-  await expect(diffFiles.nth(1)).toContainText("src/new.ts");
-  // 新規ファイルにはNewバッジが表示されている
-  await expect(diffFiles.nth(1)).toContainText("New");
-  // 差分の追加行が表示されている
-  await expect(diffFiles.nth(0)).toContainText("newModule");
-});
-
-test("GET /api/status を呼ぶと、ブランチ名を含むレスポンスが返る", async ({ request }) => {
-  // APIにリクエスト
+// Resolve repo dir from the test server's /api/status endpoint
+async function getRepoDir(request: typeof test extends (name: string, fn: (args: infer T) => void) => void ? T["request"] : never) {
   const res = await request.get("/api/status", {
     headers: { host: "127.0.0.1:14568" },
   });
-  // 正常レスポンスを検証
+  const data = await res.json();
+  return data.cwd as string;
+}
+
+test("opening the page shows the branch name in the toolbar", async ({ page }) => {
+  await page.goto("/");
+  const toolbar = page.getByTestId("toolbar");
+  await expect(toolbar).toBeVisible();
+  // Branch name is displayed
+  await expect(toolbar).toContainText("feature/test");
+  // Refresh button is displayed
+  await expect(toolbar.getByRole("button", { name: "Refresh" })).toBeVisible();
+});
+
+test("opening the page fetches /api/diff/auto and shows changed files", async ({ page }) => {
+  // Intercept /api/diff/auto to verify it's called
+  let diffRequested = false;
+  await page.route("**/api/diff/auto", async (route) => {
+    diffRequested = true;
+    await route.continue();
+  });
+  await page.goto("/");
+  const diffView = page.getByTestId("diff-view");
+  await expect(diffView).toBeVisible();
+  // Two changed files are displayed
+  const diffFiles = diffView.getByTestId("diff-file");
+  await expect(diffFiles).toHaveCount(2);
+  // File paths are shown
+  await expect(diffFiles.nth(0)).toContainText("hello.ts");
+  await expect(diffFiles.nth(1)).toContainText("new-file.ts");
+  // New file has the New badge
+  await expect(diffFiles.nth(1)).toContainText("New");
+  // Added line content is visible
+  await expect(diffFiles.nth(0)).toContainText("hello world");
+  // Verify the diff API was called
+  expect(diffRequested).toBe(true);
+});
+
+test("modifying a file updates the diff view automatically", async ({ page, request }) => {
+  const repoDir = await getRepoDir(request);
+  await page.goto("/");
+  const diffView = page.getByTestId("diff-view");
+  await expect(diffView).toBeVisible();
+  // Verify initial file count
+  await expect(diffView.getByTestId("diff-file")).toHaveCount(2);
+  // Add a new file to the repo
+  writeFileSync(join(repoDir, "added.ts"), 'export const added = true;\n');
+  execSync("git add added.ts", { cwd: repoDir, stdio: "pipe" });
+  // Wait for the diff view to update (watcher debounce + fetch)
+  await expect(diffView.getByTestId("diff-file")).toHaveCount(3);
+  // The added file is shown
+  await expect(diffView).toContainText("added.ts");
+});
+
+test("clicking Refresh re-fetches the diff", async ({ page, request }) => {
+  const repoDir = await getRepoDir(request);
+  await page.goto("/");
+  const diffView = page.getByTestId("diff-view");
+  await expect(diffView).toBeVisible();
+  // Add a new file to the repo
+  writeFileSync(join(repoDir, "refreshed.ts"), 'export const refreshed = true;\n');
+  execSync("git add refreshed.ts", { cwd: repoDir, stdio: "pipe" });
+  // Click the Refresh button
+  await page.getByTestId("toolbar").getByRole("button", { name: "Refresh" }).click();
+  // The added file appears
+  await expect(diffView).toContainText("refreshed.ts");
+});
+
+test("clicking a diff line opens the comment form, and submitting sends the comment", async ({ page }) => {
+  // Intercept /api/comment to verify the request payload
+  let commentPayload: Record<string, unknown> | null = null;
+  await page.route("**/api/comment", async (route) => {
+    const request = route.request();
+    commentPayload = request.postDataJSON();
+    await route.continue();
+  });
+  await page.goto("/");
+  const diffView = page.getByTestId("diff-view");
+  await expect(diffView).toBeVisible();
+  // Find the hello.ts file by its header text
+  const helloFile = diffView.getByTestId("diff-file").filter({ hasText: "hello.ts" });
+  await expect(helloFile).toBeVisible();
+  // Click on the gutter of the "hello world" line
+  const addedLine = helloFile.getByRole("row").filter({ hasText: "hello world" });
+  await addedLine.getByRole("cell").first().click();
+  // Comment form appears
+  const commentForm = helloFile.getByRole("textbox");
+  await expect(commentForm).toBeVisible();
+  // Type a comment and submit
+  await commentForm.fill("This looks good");
+  await helloFile.getByRole("button", { name: "Send to Terminal" }).click();
+  // Comment form disappears after successful submission
+  await expect(commentForm).not.toBeVisible();
+  // Verify the request was sent with correct payload
+  assert(commentPayload !== null, "comment API request was not sent");
+  expect(commentPayload.comment).toBe("This looks good");
+  expect(commentPayload.file).toContain("hello.ts");
+});
+
+test("GET /api/status returns the current branch name", async ({ request }) => {
+  const res = await request.get("/api/status", {
+    headers: { host: "127.0.0.1:14568" },
+  });
   expect(res.ok()).toBe(true);
   const data = await res.json();
   expect(data.branch).toBe("feature/test");

@@ -1,63 +1,58 @@
 /**
  * Test server for E2E tests.
- * Uses fake git/cmux/github services with static data.
+ * Creates a temporary dirty git repository with real git commands.
  */
 import { serve } from "bun";
+import { mkdtempSync, writeFileSync } from "fs";
+import { execSync } from "child_process";
+import { join } from "path";
+import { tmpdir } from "os";
 import index from "../src/index.html";
 import { createAppConfig } from "../server/app.ts";
-import { createGitService, type CommandRunner } from "../server/git.ts";
+import { createGitService, defaultCommandRunner } from "../server/git.ts";
 import { createCmuxService, createDryRunConnector } from "../server/cmux.ts";
 import { createGitHubService } from "../server/github.ts";
-
-const FAKE_DIFF = `diff --git a/src/index.ts b/src/index.ts
-index abc1234..def5678 100644
---- a/src/index.ts
-+++ b/src/index.ts
-@@ -1,5 +1,6 @@
- import { serve } from "bun";
-+import { newModule } from "./new";
-
- const server = serve({
--  port: 3000,
-+  port: 4567,
-   routes: {
-
-diff --git a/src/new.ts b/src/new.ts
-new file mode 100644
-index 0000000..abc1234
---- /dev/null
-+++ b/src/new.ts
-@@ -0,0 +1,3 @@
-+export function newModule() {
-+  return "hello";
-+}`;
+import { createFileWatcher, defaultWatcherFactory } from "../server/watcher.ts";
 
 const PORT = 14568;
 
-const runner: CommandRunner = async (cmd) => {
-  const key = cmd.join(" ");
-  if (key === "git rev-parse HEAD") return "abc123\n";
-  if (key.includes("rev-parse --abbrev-ref HEAD")) return "feature/test\n";
-  if (key.includes("symbolic-ref")) return "origin/main\n";
-  if (key.includes("merge-base")) return "abc123\n";
-  if (key.includes("diff --unified=3")) return FAKE_DIFF;
-  if (key.includes("diff --name-only")) return "src/index.ts\nsrc/new.ts\n";
-  if (key.includes("branch -a")) return "main\nfeature/test\n";
-  if (key.includes("status --porcelain")) return "M src/index.ts\nA src/new.ts\n";
-  if (key.includes("gh")) return "{}";
-  throw new Error(`Unexpected command: ${key}`);
-};
+// Create a temporary dirty git repo
+const repoDir = mkdtempSync(join(tmpdir(), "cmux-hub-e2e-"));
 
-const git = createGitService(runner, "/tmp/test");
+function gitInRepo(cmd: string) {
+  execSync(`git ${cmd}`, { cwd: repoDir, stdio: "pipe" });
+}
+
+// Initialize repo with a base commit
+gitInRepo("init");
+gitInRepo("config user.email 'test@test.com'");
+gitInRepo("config user.name 'Test'");
+writeFileSync(join(repoDir, "hello.ts"), 'export const greeting = "hello";\n');
+gitInRepo("add .");
+gitInRepo("commit -m 'initial commit'");
+
+// Create a feature branch with changes
+gitInRepo("checkout -b feature/test");
+writeFileSync(join(repoDir, "hello.ts"), 'export const greeting = "hello world";\nexport const version = 1;\n');
+writeFileSync(join(repoDir, "new-file.ts"), 'export function newModule() {\n  return "new";\n}\n');
+gitInRepo("add .");
+
+// Export repoDir so tests can modify files
+export { repoDir };
+
+const git = createGitService(defaultCommandRunner, repoDir);
 const cmux = createCmuxService(createDryRunConnector());
-const github = createGitHubService(runner, "/tmp/test");
+const github = createGitHubService(defaultCommandRunner, repoDir);
+const watcher = createFileWatcher(defaultWatcherFactory, repoDir);
 
 const app = createAppConfig({
   port: PORT,
   git,
   cmux,
   github,
-  cwd: "/tmp/test",
+  cwd: repoDir,
+  watcher,
+  defaultSurfaceId: "surface:e2e-test",
 });
 
 const server = serve({
@@ -73,5 +68,7 @@ const server = serve({
 });
 
 app.setServer(server);
+app.startWatcher();
 
 console.log(`E2E test server running at http://127.0.0.1:${PORT}`);
+console.log(`Test repo: ${repoDir}`);
