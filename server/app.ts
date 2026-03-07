@@ -282,22 +282,22 @@ export function createAppConfig(deps: AppDeps) {
           if (!action) {
             return errorResponse("Action not found: " + body.id, 404);
           }
-          // Build env variables: built-in + user-provided
-          const branch = await git.getCurrentBranch().catch(() => "");
-          const diffRange = await git.computeDiffRange().catch(() => null);
-          const base = diffRange?.base ?? "";
-          const builtinVars: Record<string, string> = {
-            CMUX_HUB_CWD: cwd,
-            CMUX_HUB_GIT_BRANCH: branch,
-            CMUX_HUB_GIT_BASE: base,
-            CMUX_HUB_PORT: String(port),
-            CMUX_HUB_SURFACE_ID: defaultSurfaceId ?? "",
-          };
-          const allVars = { ...builtinVars, ...body.variables };
-          const fullCommand = buildCommandWithEnv(action.command, allVars);
           const actionType = action.type ?? "shell";
 
           if (actionType === "shell") {
+            // Build env variables: built-in + user-provided (only for shell type)
+            const branch = await git.getCurrentBranch().catch(() => "");
+            const diffRange = await git.computeDiffRange().catch(() => null);
+            const base = diffRange?.base ?? "";
+            const builtinVars: Record<string, string> = {
+              CMUX_HUB_CWD: cwd,
+              CMUX_HUB_GIT_BRANCH: branch,
+              CMUX_HUB_GIT_BASE: base,
+              CMUX_HUB_PORT: String(port),
+              CMUX_HUB_SURFACE_ID: defaultSurfaceId ?? "",
+            };
+            const allVars = { ...builtinVars, ...body.variables };
+            const fullCommand = buildCommandWithEnv(action.command, allVars);
             // Execute directly as subshell on server
             const proc = Bun.spawn(["sh", "-c", fullCommand], {
               cwd,
@@ -308,14 +308,17 @@ export function createAppConfig(deps: AppDeps) {
             const stderr = await new Response(proc.stderr).text();
             const exitCode = await proc.exited;
             return jsonResponse({ ok: exitCode === 0, command: fullCommand, stdout, stderr, exitCode });
-          } else if (actionType === "text") {
-            // Paste text to terminal without Enter
-            await cmux.sendText(fullCommand, resolveSurfaceId(body.surfaceId));
-          } else {
-            // Send command to terminal with Enter
-            await cmux.sendCommand(fullCommand, resolveSurfaceId(body.surfaceId));
           }
-          return jsonResponse({ ok: true, command: fullCommand });
+          // For terminal/text: only user-provided variables
+          const termCommand = body.variables
+            ? buildCommandWithEnv(action.command, body.variables)
+            : action.command;
+          if (actionType === "text") {
+            await cmux.sendText(termCommand, resolveSurfaceId(body.surfaceId));
+          } else {
+            await cmux.sendCommand(termCommand, resolveSurfaceId(body.surfaceId));
+          }
+          return jsonResponse({ ok: true, command: termCommand });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }

@@ -210,9 +210,18 @@ async function waitForBrowserClose(surfaceRef: string) {
   process.exit(0);
 }
 
-const browserSurface = await openBrowserSplit();
-if (browserSurface) {
-  waitForBrowserClose(browserSurface);
+// bun --hot re-executes top-level code on every change.
+// Store the browser surface ref in globalThis to avoid opening a new window each time.
+const existingSurface = (globalThis as Record<string, unknown>).__cmuxHubBrowserSurface as string | undefined;
+if (existingSurface && await isSurfaceAlive(existingSurface)) {
+  logger.debug("reusing existing browser surface:", existingSurface);
+  waitForBrowserClose(existingSurface);
 } else {
-  console.log("cmux browser split not available, open http://127.0.0.1:" + PORT);
+  const browserSurface = await openBrowserSplit();
+  if (browserSurface) {
+    (globalThis as Record<string, unknown>).__cmuxHubBrowserSurface = browserSurface;
+    waitForBrowserClose(browserSurface);
+  } else {
+    logger.info("cmux browser split not available, open http://127.0.0.1:" + PORT);
+  }
 }
