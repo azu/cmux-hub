@@ -93,9 +93,7 @@ export function DiffView({
       return <CommitList onSelectCommit={onSelectCommit} />;
     }
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        No changes detected
-      </div>
+      <div className="flex items-center justify-center h-64 text-gray-500">No changes detected</div>
     );
   }
 
@@ -103,10 +101,7 @@ export function DiffView({
     <div data-testid="diff-view" className="space-y-2">
       {selectedCommit && onClearCommit && (
         <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border border-[#30363d] rounded-md">
-          <button
-            className="text-[#58a6ff] hover:text-[#79c0ff] text-sm"
-            onClick={onClearCommit}
-          >
+          <button className="text-[#58a6ff] hover:text-[#79c0ff] text-sm" onClick={onClearCommit}>
             ← Back to auto-diff
           </button>
           <span className="text-[#848d97] text-sm">

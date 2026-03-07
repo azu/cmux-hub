@@ -74,11 +74,11 @@ cat actions.json | ./cmux-hub --actions -
 
 The `/api/diff/auto` endpoint computes the appropriate diff range based on the current branch.
 
-| Situation | Diff range | Includes untracked |
-| --- | --- | --- |
-| Feature branch | merge-base to HEAD + working tree | No |
-| Default branch (main/master) | HEAD vs working tree | Yes |
-| No commits yet | Staged changes | Yes |
+| Situation                    | Diff range                        | Includes untracked |
+| ---------------------------- | --------------------------------- | ------------------ |
+| Feature branch               | merge-base to HEAD + working tree | No                 |
+| Default branch (main/master) | HEAD vs working tree              | Yes                |
+| No commits yet               | Staged changes                    | Yes                |
 
 ### Commit History
 
@@ -105,30 +105,28 @@ Pass a JSON file via `--actions` to customize toolbar buttons. The `type` field 
   },
   {
     "label": "More",
-    "submenu": [
-      { "label": "Stash", "type": "shell", "command": "git stash" }
-    ]
+    "submenu": [{ "label": "Stash", "type": "shell", "command": "git stash" }]
   }
 ]
 ```
 
 ### Action Fields
 
-| Field | Type | Description |
-| --- | --- | --- |
-| `label` | `string` | Button label |
-| `command` | `string` | Command to execute |
-| `type` | `"paste-and-enter" \| "shell" \| "paste"` | Execution mode (required) |
-| `input` | `{ placeholder, variable }` | Shows an input form before executing |
-| `submenu` | `ActionItem[]` | Nested menu (instead of `command`) |
+| Field     | Type                                      | Description                          |
+| --------- | ----------------------------------------- | ------------------------------------ |
+| `label`   | `string`                                  | Button label                         |
+| `command` | `string`                                  | Command to execute                   |
+| `type`    | `"paste-and-enter" \| "shell" \| "paste"` | Execution mode (required)            |
+| `input`   | `{ placeholder, variable }`               | Shows an input form before executing |
+| `submenu` | `ActionItem[]`                            | Nested menu (instead of `command`)   |
 
 ### Execution Modes
 
-| type | Behavior | Use case |
-| --- | --- | --- |
-| `"shell"` | Executes as a subshell on the server. Returns stdout/stderr/exitCode | `git commit`, `gh pr create` |
-| `"paste-and-enter"` | Pastes text to cmux terminal and sends Enter | Commands for Claude Code or other terminal processes |
-| `"paste"` | Pastes text to cmux terminal without Enter | Paste text only |
+| type                | Behavior                                                             | Use case                                             |
+| ------------------- | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| `"shell"`           | Executes as a subshell on the server. Returns stdout/stderr/exitCode | `git commit`, `gh pr create`                         |
+| `"paste-and-enter"` | Pastes text to cmux terminal and sends Enter                         | Commands for Claude Code or other terminal processes |
+| `"paste"`           | Pastes text to cmux terminal without Enter                           | Paste text only                                      |
 
 ### Variables
 
@@ -136,13 +134,13 @@ Commands can reference shell variables. Variables are prepended as inline enviro
 
 #### Built-in Variables (shell type only)
 
-| Variable | Description | Example |
-| --- | --- | --- |
-| `$CMUX_HUB_CWD` | Target directory (absolute path) | `/home/user/project` |
-| `$CMUX_HUB_GIT_BRANCH` | Current git branch | `feat/new-feature` |
-| `$CMUX_HUB_GIT_BASE` | Diff base branch (auto-detected) | `main` |
-| `$CMUX_HUB_PORT` | Server port | `4567` |
-| `$CMUX_HUB_SURFACE_ID` | cmux terminal surface ID | `surface:123` |
+| Variable               | Description                      | Example              |
+| ---------------------- | -------------------------------- | -------------------- |
+| `$CMUX_HUB_CWD`        | Target directory (absolute path) | `/home/user/project` |
+| `$CMUX_HUB_GIT_BRANCH` | Current git branch               | `feat/new-feature`   |
+| `$CMUX_HUB_GIT_BASE`   | Diff base branch (auto-detected) | `main`               |
+| `$CMUX_HUB_PORT`       | Server port                      | `4567`               |
+| `$CMUX_HUB_SURFACE_ID` | cmux terminal surface ID         | `surface:123`        |
 
 #### User Input Variables
 
@@ -168,23 +166,23 @@ PR data is pushed to the frontend via WebSocket every 10 seconds.
 
 ## API Endpoints
 
-| Method | Path | Description |
-| --- | --- | --- |
-| GET | `/api/diff` | Diff with optional `base` and `target` params |
-| GET | `/api/diff/auto` | Auto-computed diff based on branch context |
-| GET | `/api/diff/files` | List of changed files |
-| GET | `/api/diff/commit?hash=` | Diff for a specific commit |
-| GET | `/api/file-lines?path=&start=&end=` | Read file lines |
-| GET | `/api/log?count=` | Recent commit log |
-| GET | `/api/branches` | List branches and current branch |
-| GET | `/api/status` | Server status, branch, cwd, actions |
-| GET | `/api/pr` | Current PR info |
-| GET | `/api/pr/comments` | PR review comments |
-| GET | `/api/ci` | CI check statuses |
-| POST | `/api/send-to-terminal` | Send text to cmux terminal |
-| POST | `/api/comment` | Send inline comment to cmux terminal |
-| POST | `/api/command` | Send command to cmux terminal |
-| POST | `/api/action` | Execute a toolbar action by ID |
+| Method | Path                                | Description                                   |
+| ------ | ----------------------------------- | --------------------------------------------- |
+| GET    | `/api/diff`                         | Diff with optional `base` and `target` params |
+| GET    | `/api/diff/auto`                    | Auto-computed diff based on branch context    |
+| GET    | `/api/diff/files`                   | List of changed files                         |
+| GET    | `/api/diff/commit?hash=`            | Diff for a specific commit                    |
+| GET    | `/api/file-lines?path=&start=&end=` | Read file lines                               |
+| GET    | `/api/log?count=`                   | Recent commit log                             |
+| GET    | `/api/branches`                     | List branches and current branch              |
+| GET    | `/api/status`                       | Server status, branch, cwd, actions           |
+| GET    | `/api/pr`                           | Current PR info                               |
+| GET    | `/api/pr/comments`                  | PR review comments                            |
+| GET    | `/api/ci`                           | CI check statuses                             |
+| POST   | `/api/send-to-terminal`             | Send text to cmux terminal                    |
+| POST   | `/api/comment`                      | Send inline comment to cmux terminal          |
+| POST   | `/api/command`                      | Send command to cmux terminal                 |
+| POST   | `/api/action`                       | Execute a toolbar action by ID                |
 
 WebSocket endpoint: `/ws` — receives `diff-updated` and `pr-updated` messages.
 

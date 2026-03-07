@@ -345,7 +345,10 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
                   {lineComments &&
                     lineComments.map((c) => (
                       <tr key={`pr-comment-${c.id}`}>
-                        <td colSpan={4} className="px-4 py-1 bg-[#1c2128] border-l-2 border-[#58a6ff]">
+                        <td
+                          colSpan={4}
+                          className="px-4 py-1 bg-[#1c2128] border-l-2 border-[#58a6ff]"
+                        >
                           <InlinePRComment comment={c} filePath={file.newPath} />
                         </td>
                       </tr>
