@@ -86,7 +86,8 @@ export default function App() {
           comments?: PRComment[];
         };
         if (data.pr?.url) setPrUrl(data.pr.url);
-        if ((data.pr as { title?: string })?.title) setPrTitle((data.pr as { title: string }).title);
+        if ((data.pr as { title?: string })?.title)
+          setPrTitle((data.pr as { title: string }).title);
         if (data.checks) setChecks(data.checks);
         if (data.comments) setPrComments(data.comments);
       }
