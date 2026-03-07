@@ -48,11 +48,46 @@ function createFakeRunner(): { runner: CommandRunner; calls: string[][] } {
         baseRefName: "main",
         body: "PR body",
       });
+    if (key.includes("gh repo view"))
+      return JSON.stringify({ owner: { login: "test" }, name: "repo" });
+    if (key.includes("gh api graphql") && key.includes("reviewThreads"))
+      return JSON.stringify({
+        data: {
+          repository: {
+            pullRequest: { reviewThreads: { nodes: [] } },
+          },
+        },
+      });
+    if (key.includes("gh api graphql") && key.includes("statusCheckRollup"))
+      return JSON.stringify({
+        data: {
+          repository: {
+            pullRequest: {
+              commits: {
+                nodes: [
+                  {
+                    commit: {
+                      statusCheckRollup: {
+                        contexts: {
+                          nodes: [
+                            {
+                              name: "ci",
+                              status: "COMPLETED",
+                              conclusion: "SUCCESS",
+                              detailsUrl: "https://example.com",
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
     if (key.includes("gh api") && key.includes("comments")) return "";
-    if (key.includes("gh pr checks"))
-      return JSON.stringify([
-        { name: "ci", state: "SUCCESS", conclusion: "SUCCESS", detailsUrl: "https://example.com" },
-      ]);
     throw new Error(`Unexpected command: ${key}`);
   };
   return { runner, calls };

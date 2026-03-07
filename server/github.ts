@@ -154,14 +154,58 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
 
     async getCIChecks(): Promise<CICheck[]> {
       try {
-        const raw = await gh(["pr", "checks", "--json", "name,state,conclusion,detailsUrl"]);
-        const checks = JSON.parse(raw);
-        return checks.map((c: Record<string, string>) => ({
-          name: c.name,
-          status: c.state,
-          conclusion: c.conclusion,
-          url: c.detailsUrl,
-        }));
+        const pr = await this.getCurrentPR();
+        if (!pr) return [];
+        const repoRaw = await gh(["repo", "view", "--json", "owner,name"]);
+        const repo = JSON.parse(repoRaw) as { owner: { login: string }; name: string };
+        const query = `query($owner: String!, $name: String!, $number: Int!) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              commits(last: 1) {
+                nodes {
+                  commit {
+                    statusCheckRollup {
+                      contexts(first: 100) {
+                        nodes {
+                          ... on CheckRun {
+                            name
+                            status
+                            conclusion
+                            detailsUrl
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }`;
+        const raw = await gh([
+          "api",
+          "graphql",
+          "-f",
+          `query=${query}`,
+          "-F",
+          `owner=${repo.owner.login}`,
+          "-F",
+          `name=${repo.name}`,
+          "-F",
+          `number=${pr.number}`,
+        ]);
+        const data = JSON.parse(raw);
+        const nodes =
+          data.data.repository.pullRequest.commits.nodes[0]?.commit?.statusCheckRollup?.contexts
+            ?.nodes ?? [];
+        return nodes
+          .filter((n: Record<string, string>) => n.name)
+          .map((n: Record<string, string>) => ({
+            name: n.name,
+            status: n.status,
+            conclusion: n.conclusion ?? "",
+            url: n.detailsUrl ?? "",
+          }));
       } catch {
         return [];
       }

@@ -41,16 +41,52 @@ describe("createGitHubService", () => {
   });
 
   test("getCIChecks parses response", async () => {
-    const checksData = [
-      { name: "ci", state: "SUCCESS", conclusion: "SUCCESS", detailsUrl: "https://example.com" },
-    ];
+    const prData = {
+      number: 1,
+      title: "PR",
+      state: "OPEN",
+      url: "",
+      headRefName: "feat",
+      baseRefName: "main",
+      body: "",
+    };
+    const graphqlResponse = {
+      data: {
+        repository: {
+          pullRequest: {
+            commits: {
+              nodes: [
+                {
+                  commit: {
+                    statusCheckRollup: {
+                      contexts: {
+                        nodes: [
+                          {
+                            name: "ci",
+                            status: "COMPLETED",
+                            conclusion: "SUCCESS",
+                            detailsUrl: "https://example.com",
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          },
+        },
+      },
+    };
     const runner = createFakeRunner({
-      "pr checks --json": JSON.stringify(checksData),
+      "pr view --json": JSON.stringify(prData),
+      "repo view --json": JSON.stringify({ owner: { login: "test" }, name: "repo" }),
+      "api graphql": JSON.stringify(graphqlResponse),
     });
     const gh = createGitHubService(runner, "/tmp/test");
     const checks = await gh.getCIChecks();
     expect(checks).toEqual([
-      { name: "ci", status: "SUCCESS", conclusion: "SUCCESS", url: "https://example.com" },
+      { name: "ci", status: "COMPLETED", conclusion: "SUCCESS", url: "https://example.com" },
     ]);
   });
 
