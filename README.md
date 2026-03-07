@@ -1,6 +1,6 @@
 # cmux-hub
 
-Diff viewer for [cmux](https://cmux.dev). Displays branch changes with syntax highlighting, inline comments, commit history browsing, and custom toolbar actions.
+A browser-based diff viewer for [cmux](https://cmux.dev). See what changed at a glance — syntax-highlighted diffs, inline review comments, commit history, GitHub PR status, and custom toolbar actions, all streamed in real time via WebSocket.
 
 ![cmux-hub with cmux](docs/img/cmux-hub-overview.png)
 
