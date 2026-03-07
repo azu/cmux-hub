@@ -137,7 +137,10 @@ export default function App() {
         onRefresh={refreshAll}
         hasTerminal={hasTerminal}
         actions={actions}
-        onShowDiff={() => { navigate("/"); clearCommit(); }}
+        onShowDiff={() => {
+          navigate("/");
+          clearCommit();
+        }}
         onShowCommitList={() => navigate("/commits")}
         onShowPlan={hasPlan ? () => navigate("/plan") : undefined}
       />

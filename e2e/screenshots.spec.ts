@@ -58,7 +58,7 @@ test("screenshot: commit list", async ({ page, request }) => {
     ["feature-a.ts", "feat: add feature A"],
     ["feature-b.ts", "fix: update feature B"],
     ["feature-c.ts", "refactor: clean up module C"],
-  ]) {
+  ] as const) {
     writeFileSync(join(repoDir, name), `export const x = 1;\n`);
     execSync(`git add . && git commit -m '${msg}'`, { cwd: repoDir, stdio: "pipe" });
   }

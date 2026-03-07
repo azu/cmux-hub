@@ -38,12 +38,15 @@ Update screenshots: `bun run screenshots`
 - Real-time diff updates via WebSocket
 - Untracked and unstaged file detection
 - Commit history browser (when no pending changes)
+- Plan file viewer (Claude Code session plans with syntax highlighting)
 - Branch selector for switching diff base
+- Hash-based URL routing with browser back/forward support
 - Custom toolbar actions via JSON (with submenu support)
 - File watcher with auto-refresh (working tree + git ref changes)
 - Inline review comments sent to cmux terminal
 - GitHub PR integration (CI status, PR review comments)
 - WebSocket real-time updates (diff changes, PR/CI polling)
+- Self-update command (`cmux-hub update`)
 - Auto-shutdown when browser tab closes
 - Git worktree support
 
