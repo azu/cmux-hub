@@ -92,6 +92,38 @@ cmux-hub --actions actions.json
 cat actions.json | cmux-hub --actions -
 ```
 
+### Usage with cmux
+
+When launched inside cmux, cmux-hub automatically opens a browser split pane and shuts down when the pane closes. Combine with Claude Code hooks to launch cmux-hub on every session.
+
+`.claude/cmux-hub.json`:
+
+```json
+[
+  { "label": "Commit", "type": "paste-and-enter", "command": "/commit" },
+  { "label": "Create PR", "type": "paste-and-enter", "command": "/create-pr" }
+]
+```
+
+`.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmux-hub --actions .claude/cmux-hub.json"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ### Options
 
 ```

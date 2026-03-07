@@ -173,6 +173,17 @@ const server = serve({
 app.setServer(server);
 app.startWatcher();
 
+// Cleanup on termination signals (e.g. SIGHUP from parent shell exit)
+function cleanup() {
+  logger.info("cmux-hub: Signal received, shutting down.");
+  watcher.stop();
+  server.stop();
+  process.exit(0);
+}
+process.on("SIGHUP", cleanup);
+process.on("SIGINT", cleanup);
+process.on("SIGTERM", cleanup);
+
 logger.info(`Server running at http://127.0.0.1:${PORT}`);
 logger.info(`Watching: ${CWD}`);
 

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun run src/cli.ts --actions .claude/cmux-hub.json &"
+          }
+        ]
+      }
+    ]
+  }
+}
