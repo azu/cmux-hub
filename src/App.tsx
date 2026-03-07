@@ -26,7 +26,7 @@ type PRComment = {
 };
 
 export default function App() {
-  const { diff, loading, error, refresh } = useDiff();
+  const { diff, loading, refreshing, error, refresh } = useDiff();
   const [branch, setBranch] = useState("...");
   const [hasTerminal, setHasTerminal] = useState(false);
   const [actions, setActions] = useState<MenuItem[]>([]);
@@ -59,8 +59,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#c9d1d9] flex flex-col">
+      {refreshing && (
+        <div className="fixed top-0 left-0 right-0 z-50 h-0.5 bg-[#1a1e24] overflow-hidden">
+          <div className="h-full bg-[#58a6ff] animate-progress-bar" />
+        </div>
+      )}
       <Toolbar branch={branch} onRefresh={refresh} hasTerminal={hasTerminal} actions={actions} />
-      <div className="flex-1 overflow-auto p-4">
+      <div className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}>
         <div className="flex gap-4">
           <div className="flex-1 min-w-0">
             <DiffView diff={diff} loading={loading} error={error} onRefresh={refresh} hasTerminal={hasTerminal} />

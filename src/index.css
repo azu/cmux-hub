@@ -9,3 +9,26 @@
     @apply min-w-[320px] min-h-screen m-0 bg-background text-foreground;
   }
 }
+
+@keyframes progress-bar {
+  0% {
+    width: 0%;
+    margin-left: 0%;
+  }
+  30% {
+    width: 40%;
+    margin-left: 0%;
+  }
+  70% {
+    width: 40%;
+    margin-left: 60%;
+  }
+  100% {
+    width: 0%;
+    margin-left: 100%;
+  }
+}
+
+.animate-progress-bar {
+  animation: progress-bar 1s ease-in-out infinite;
+}
