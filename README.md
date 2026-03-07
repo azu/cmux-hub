@@ -35,42 +35,18 @@ cmux-hub update
 
 ## Usage
 
-### Development
-
 ```bash
-bun install
-```
-
-```bash
-# HMR with hot reload
-bun --hot src/cli.ts
-
-# With custom actions
-bun --hot src/cli.ts --actions - <<'EOF'
-[
-  { "label": "Commit", "type": "paste-and-enter", "command": "/commit" },
-  { "label": "Push", "type": "shell", "command": "git push" }
-]
-EOF
-```
-
-### CLI (binary)
-
-```bash
-# Build
-bun run build:compile
-
 # Run (diff of current directory)
-./cmux-hub
+cmux-hub
 
 # Specify target directory
-./cmux-hub /home/user/project
+cmux-hub /home/user/project
 
 # Custom toolbar actions
-./cmux-hub --actions actions.json
+cmux-hub --actions actions.json
 
 # Read actions from stdin
-cat actions.json | ./cmux-hub --actions -
+cat actions.json | cmux-hub --actions -
 ```
 
 ### Options
@@ -212,6 +188,24 @@ WebSocket endpoint: `/ws` — receives `diff-updated` and `pr-updated` messages.
 - Commit hash validated against `/^[0-9a-f]{4,40}$/i`
 
 ## Development
+
+```bash
+bun install
+
+# HMR with hot reload
+bun --hot src/cli.ts
+
+# With custom actions
+bun --hot src/cli.ts --actions - <<'EOF'
+[
+  { "label": "Commit", "type": "paste-and-enter", "command": "/commit" },
+  { "label": "Push", "type": "shell", "command": "git push" }
+]
+EOF
+
+# Build standalone binary
+bun run build:compile
+```
 
 ```bash
 bun test          # Run tests
