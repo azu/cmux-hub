@@ -51,6 +51,7 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
   const [selEnd, setSelEnd] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [showComment, setShowComment] = useState(false);
+  const [showFileComment, setShowFileComment] = useState(false);
   const [expandedLines, setExpandedLines] = useState<Map<string, DiffLineType[]>>(new Map());
   const [loadingExpand, setLoadingExpand] = useState<string | null>(null);
 
@@ -224,6 +225,16 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
     [onComment, file.newPath, resolveLineRange, handleCancelComment],
   );
 
+  const handleSubmitFileComment = useCallback(
+    (comment: string) => {
+      if (onComment) {
+        onComment(file.newPath, 0, 0, comment);
+      }
+      setShowFileComment(false);
+    },
+    [onComment, file.newPath],
+  );
+
   const handleExpand = useCallback(
     async (direction: string, fromLine: number, toLine: number, hunkIndex: number) => {
       const key =
@@ -274,12 +285,32 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
           {collapsed ? "\u25b6" : "\u25bc"}
         </span>
         <span className="text-[#adbac7] font-mono text-sm flex-1">{file.newPath}</span>
+        {onComment && (
+          <button
+            className="text-[#848d97] hover:text-[#58a6ff] text-xs px-2 py-0.5 rounded hover:bg-[#30363d] transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowFileComment((v) => !v);
+            }}
+            title="Comment on file"
+          >
+            Comment
+          </button>
+        )}
         {badge && (
           <span className={`${badgeColor} text-xs px-2 py-0.5 rounded-full font-medium`}>
             {badge}
           </span>
         )}
       </div>
+      {showFileComment && (
+        <div className="px-4 py-2 bg-gray-900 border-b border-[#30363d]">
+          <CommentForm
+            onSubmit={handleSubmitFileComment}
+            onCancel={() => setShowFileComment(false)}
+          />
+        </div>
+      )}
       {!collapsed && (
         <table className="w-full border-collapse">
           <tbody>
