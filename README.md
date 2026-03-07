@@ -7,9 +7,13 @@ Diff viewer for [cmux](https://cmux.dev). Displays branch changes with syntax hi
 - Diff view with syntax highlighting (Shiki)
 - Untracked and unstaged file detection
 - Commit history browser (when no pending changes)
-- Custom toolbar actions via JSON
+- Branch selector for switching diff base
+- Custom toolbar actions via JSON (with submenu support)
 - File watcher with auto-refresh (working tree + git ref changes)
 - Inline review comments sent to cmux terminal
+- GitHub PR integration (CI status, PR review comments)
+- WebSocket real-time updates (diff changes, PR/CI polling)
+- Auto-shutdown when browser tab closes
 - Git worktree support
 
 ## Install
@@ -151,6 +155,38 @@ Variables defined in `input.variable` are set as environment variables from user
 #### Safety
 
 Variable values are single-quote escaped and prepended as env prefix. The `/api/action` endpoint only accepts an action ID and user input variables — not raw command strings. Variable keys are validated against `[A-Za-z_][A-Za-z0-9_]*`.
+
+## GitHub Integration
+
+When the current branch has an associated Pull Request, cmux-hub polls GitHub via `gh` CLI and displays:
+
+- CI check statuses (success, failure, in-progress)
+- PR review comments with file path and line number
+- PR info (title, state, base/head branch)
+
+PR data is pushed to the frontend via WebSocket every 10 seconds.
+
+## API Endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/api/diff` | Diff with optional `base` and `target` params |
+| GET | `/api/diff/auto` | Auto-computed diff based on branch context |
+| GET | `/api/diff/files` | List of changed files |
+| GET | `/api/diff/commit?hash=` | Diff for a specific commit |
+| GET | `/api/file-lines?path=&start=&end=` | Read file lines |
+| GET | `/api/log?count=` | Recent commit log |
+| GET | `/api/branches` | List branches and current branch |
+| GET | `/api/status` | Server status, branch, cwd, actions |
+| GET | `/api/pr` | Current PR info |
+| GET | `/api/pr/comments` | PR review comments |
+| GET | `/api/ci` | CI check statuses |
+| POST | `/api/send-to-terminal` | Send text to cmux terminal |
+| POST | `/api/comment` | Send inline comment to cmux terminal |
+| POST | `/api/command` | Send command to cmux terminal |
+| POST | `/api/action` | Execute a toolbar action by ID |
+
+WebSocket endpoint: `/ws` — receives `diff-updated` and `pr-updated` messages.
 
 ## Security
 
