@@ -222,7 +222,7 @@ async function openBrowserSplit(): Promise<string | null> {
     if (exitCode !== 0) return null;
 
     // Extract surface ref from JSON output
-    const match = /"ref"\s*:\s*"(surface:\d+)"/.exec(output);
+    const match = /"surface_ref"\s*:\s*"(surface:\d+)"/.exec(output);
     return match?.[1] ?? null;
   } catch {
     return null;
