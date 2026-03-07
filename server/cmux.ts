@@ -151,7 +151,14 @@ export function createCmuxService(connector: SocketConnector, socketPath = DEFAU
      * Send a command to the terminal (e.g., git commit, gh pr create)
      */
     async sendCommand(command: string, surfaceId?: string): Promise<void> {
-      await this.sendText(command + "\n", surfaceId);
+      // `!` prefix triggers shell mode in cmux — must be typed separately before pasting the rest
+      if (command.startsWith("!")) {
+        await this.sendText("!", surfaceId);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await this.sendText(command.slice(1) + "\n", surfaceId);
+      } else {
+        await this.sendText(command + "\n", surfaceId);
+      }
     },
   };
 }
