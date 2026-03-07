@@ -129,7 +129,7 @@ When launched inside cmux, cmux-hub automatically opens a browser split pane and
 ### Options
 
 ```
--p, --port <port>      Server port (default: 4567)
+-p, --port <port>      Server port (default: random)
 -a, --actions <file>   Toolbar actions JSON file (use - for stdin)
 --dry-run              Don't connect to cmux socket
 --debug                Enable debug logging (also: DEBUG=*)

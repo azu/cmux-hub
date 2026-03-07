@@ -16,7 +16,7 @@ const CMUX_BIN = "/Applications/cmux.app/Contents/Resources/bin/cmux";
 const { values, positionals } = parseArgs({
   args: process.argv.slice(2),
   options: {
-    port: { type: "string", short: "p", default: process.env.PORT ?? "4567" },
+    port: { type: "string", short: "p", default: process.env.PORT ?? "0" },
     "dry-run": { type: "boolean", default: process.env.CMUX_HUB_DRY_RUN === "true" },
     actions: { type: "string", short: "a" },
     debug: { type: "boolean", default: false },
@@ -40,7 +40,7 @@ Commands:
   update                 Update cmux-hub to the latest version
 
 Options:
-  -p, --port <port>      Server port (default: 4567)
+  -p, --port <port>      Server port (default: random)
   -a, --actions <file>   JSON file for toolbar actions (use - for stdin)
   --dry-run              Don't connect to cmux socket
   --debug                Enable debug logging
@@ -60,7 +60,7 @@ if (values.debug) {
   enableDebug();
 }
 
-const PORT = parseInt(values.port ?? "4567", 10);
+const PORT = parseInt(values.port ?? "0", 10);
 const DRY_RUN = values["dry-run"] ?? false;
 
 // Resolve terminal surface: env var → cmux identify (focused surface)
@@ -185,14 +185,14 @@ process.on("SIGHUP", cleanup);
 process.on("SIGINT", cleanup);
 process.on("SIGTERM", cleanup);
 
-logger.info(`Server running at http://127.0.0.1:${PORT}`);
+logger.info(`Server running at http://127.0.0.1:${server.port}`);
 logger.info(`Watching: ${CWD}`);
 
 // Wait for server to be ready before opening browser
 async function waitForReady() {
   for (let i = 0; i < 50; i++) {
     try {
-      const res = await fetch(`http://127.0.0.1:${PORT}/api/status`);
+      const res = await fetch(`http://127.0.0.1:${server.port}/api/status`);
       if (res.ok) return;
     } catch {
       // not ready yet
@@ -206,7 +206,7 @@ await waitForReady();
 async function openBrowserSplit(): Promise<string | null> {
   try {
     const proc = Bun.spawn(
-      [CMUX_BIN, "--json", "browser", "open-split", `http://127.0.0.1:${PORT}`],
+      [CMUX_BIN, "--json", "browser", "open-split", `http://127.0.0.1:${server.port}`],
       { stdout: "pipe", stderr: "pipe" },
     );
     const output = await new Response(proc.stdout).text();
@@ -258,6 +258,6 @@ if (existingSurface) {
     (globalThis as Record<string, unknown>).__cmuxHubBrowserSurface = browserSurface;
     waitForBrowserClose(browserSurface);
   } else {
-    logger.info("cmux browser split not available, open http://127.0.0.1:" + PORT);
+    logger.info("cmux browser split not available, open http://127.0.0.1:" + server.port);
   }
 }

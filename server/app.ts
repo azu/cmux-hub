@@ -430,7 +430,7 @@ export function createAppConfig(deps: AppDeps) {
               CMUX_HUB_CWD: cwd,
               CMUX_HUB_GIT_BRANCH: branch,
               CMUX_HUB_GIT_BASE: base,
-              CMUX_HUB_PORT: String(port),
+              CMUX_HUB_PORT: String(securityConfig.port),
               CMUX_HUB_SURFACE_ID: defaultSurfaceId ?? "",
             };
             const allVars = { ...builtinVars, ...body.variables };
@@ -499,8 +499,9 @@ export function createAppConfig(deps: AppDeps) {
   return {
     apiRoutes,
 
-    setServer(server: { upgrade(req: Request, opts: { data: unknown }): boolean }) {
+    setServer(server: { upgrade(req: Request, opts: { data: unknown }): boolean; port: number }) {
       upgradeServer = server;
+      securityConfig.port = server.port;
     },
 
     websocket: {
