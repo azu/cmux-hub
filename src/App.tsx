@@ -25,6 +25,13 @@ type PRComment = {
   isResolved: boolean;
 };
 
+type PR = {
+  url?: string;
+  title?: string;
+  state?: string;
+  number?: number;
+};
+
 export default function App() {
   const {
     diff,
@@ -47,6 +54,29 @@ export default function App() {
   const [prState, setPrState] = useState<string | null>(null);
   const [showCommitList, setShowCommitList] = useState(false);
 
+  const fetchPR = useCallback(() => {
+    api
+      .getPR()
+      .then((r) => {
+        const pr = r.pr as PR | null;
+        setPrUrl(pr?.url ?? null);
+        setPrTitle(pr?.title ?? null);
+        setPrState(pr?.state ?? null);
+        if (pr?.number) {
+          api.getCI().then((c) => {
+            setChecks(c.checks ? (c.checks as Check[]) : []);
+          });
+          api.getPRComments().then((c) => {
+            setPrComments(c.comments ? (c.comments as PRComment[]) : []);
+          });
+        } else {
+          setChecks([]);
+          setPrComments([]);
+        }
+      })
+      .catch((e) => console.error(new Error("Failed to fetch PR", { cause: e })));
+  }, []);
+
   useEffect(() => {
     api
       .getStatus()
@@ -56,35 +86,23 @@ export default function App() {
         if (s.actions) setActions(s.actions);
       })
       .catch(() => {});
-    // Fetch PR data immediately on load
-    api
-      .getPR()
-      .then((r) => {
-        const pr = r.pr as { url?: string; title?: string; state?: string; number?: number } | null;
-        if (pr?.url) setPrUrl(pr.url);
-        if (pr?.title) setPrTitle(pr.title);
-        if (pr?.state) setPrState(pr.state);
-        if (pr?.number) {
-          api.getCI().then((c) => {
-            if (c.checks) setChecks(c.checks as Check[]);
-          });
-          api.getPRComments().then((c) => {
-            if (c.comments) setPrComments(c.comments as PRComment[]);
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
+    fetchPR();
+  }, [fetchPR]);
+
+  const refreshAll = useCallback(() => {
+    refresh();
+    api.getStatus().then((s) => setBranch(s.branch)).catch((e) => console.error(new Error("Failed to fetch branch status", { cause: e })));
+    fetchPR();
+  }, [refresh, fetchPR]);
 
   const handleWSMessage = useCallback(
     (msg: { type: string; data?: unknown }) => {
       if (msg.type === "diff-updated") {
-        refresh();
-        api.getStatus().then((s) => setBranch(s.branch)).catch((e) => console.error("Failed to fetch branch status", { cause: e }));
+        refreshAll();
       }
       if (msg.type === "pr-updated" && msg.data) {
         const data = msg.data as {
-          pr?: { url?: string; title?: string; state?: string };
+          pr?: PR;
           checks?: Check[];
           comments?: PRComment[];
         };
@@ -95,7 +113,7 @@ export default function App() {
         if (data.comments) setPrComments(data.comments);
       }
     },
-    [refresh],
+    [refreshAll],
   );
 
   useWebSocket(handleWSMessage);
@@ -109,7 +127,7 @@ export default function App() {
       )}
       <Toolbar
         branch={branch}
-        onRefresh={refresh}
+        onRefresh={refreshAll}
         hasTerminal={hasTerminal}
         actions={actions}
         onShowCommitList={() => setShowCommitList(true)}
@@ -126,7 +144,7 @@ export default function App() {
           diff={diff}
           loading={loading}
           error={error}
-          onRefresh={refresh}
+          onRefresh={refreshAll}
           hasTerminal={hasTerminal}
           selectedCommit={selectedCommit}
           showCommitList={showCommitList}
