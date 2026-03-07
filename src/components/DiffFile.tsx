@@ -235,12 +235,13 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
 
       setLoadingExpand(key);
       try {
-        const { lines } = await api.getFileLines(file.newPath, fromLine, toLine);
+        const { lines, tokenLines } = await api.getFileLines(file.newPath, fromLine, toLine);
         const contextLines: DiffLineType[] = lines.map((content, i) => ({
           type: "context" as const,
           content,
           oldLineNumber: fromLine + i,
           newLineNumber: fromLine + i,
+          tokens: tokenLines[i],
         }));
         setExpandedLines((prev) => new Map(prev).set(key, contextLines));
       } catch {

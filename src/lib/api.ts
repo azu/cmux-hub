@@ -45,7 +45,9 @@ export const api = {
 
   getFileLines(path: string, start: number, end: number) {
     const params = new URLSearchParams({ path, start: String(start), end: String(end) });
-    return fetchJSON<{ lines: string[] }>(`/api/file-lines?${params}`);
+    return fetchJSON<{ lines: string[]; tokenLines: import("./diff-parser.ts").DiffToken[][] }>(
+      `/api/file-lines?${params}`,
+    );
   },
 
   getLog(count = 20) {

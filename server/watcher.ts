@@ -1,12 +1,17 @@
+import { existsSync } from "node:fs";
 import { watch } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { resolveBin } from "./git.ts";
 
 export type WatcherCallback = (event: string, filename: string | null) => void;
 export type WatcherFactory = (dir: string, callback: WatcherCallback) => { close: () => void };
 
 function resolveGitDir(cwd: string): string | null {
   try {
-    const result = spawnSync("git", ["rev-parse", "--git-dir"], { cwd, encoding: "utf-8" });
+    const result = spawnSync(resolveBin("git"), ["rev-parse", "--git-dir"], {
+      cwd,
+      encoding: "utf-8",
+    });
     if (result.status !== 0) return null;
     const gitDir = result.stdout.trim();
     // Absolute or relative path
@@ -19,6 +24,10 @@ function resolveGitDir(cwd: string): string | null {
 
 export const defaultWatcherFactory: WatcherFactory = (dir, callback) => {
   const watchers: { close: () => void }[] = [];
+
+  if (!existsSync(dir)) {
+    return { close: () => {} };
+  }
 
   // Watch working tree (excluding .git internals and node_modules)
   const workTreeWatcher = watch(dir, { recursive: true }, (event, filename) => {
