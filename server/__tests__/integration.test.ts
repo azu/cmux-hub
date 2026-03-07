@@ -38,8 +38,8 @@ function createFakeRunner(): { runner: CommandRunner; calls: string[][] } {
     if (key.includes("diff --name-only")) return "src/index.ts\n";
     if (key.includes("branch -a")) return "main\nfeature/test\n";
     if (key.includes("status --porcelain")) return "M src/index.ts\n";
-    if (key.includes("gh pr view"))
-      return JSON.stringify({
+    if (key.includes("gh pr list"))
+      return JSON.stringify([{
         number: 42,
         title: "Test PR",
         state: "OPEN",
@@ -47,7 +47,7 @@ function createFakeRunner(): { runner: CommandRunner; calls: string[][] } {
         headRefName: "feature/test",
         baseRefName: "main",
         body: "PR body",
-      });
+      }]);
     if (key.includes("gh repo view"))
       return JSON.stringify({ owner: { login: "test" }, name: "repo" });
     if (key.includes("gh api graphql") && key.includes("reviewThreads"))

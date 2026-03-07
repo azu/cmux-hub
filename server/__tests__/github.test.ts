@@ -13,7 +13,7 @@ function createFakeRunner(responses: Record<string, string>): CommandRunner {
 }
 
 describe("createGitHubService", () => {
-  test("getCurrentPR parses JSON response", async () => {
+  test("getCurrentPR parses JSON response from gh pr list", async () => {
     const prData = {
       number: 42,
       title: "My PR",
@@ -24,32 +24,33 @@ describe("createGitHubService", () => {
       body: "Description",
     };
     const runner = createFakeRunner({
-      "pr view --json": JSON.stringify(prData),
+      "pr list --head": JSON.stringify([prData]),
     });
     const gh = createGitHubService(runner, "/tmp/test");
-    const pr = await gh.getCurrentPR();
+    const pr = await gh.getCurrentPR("feature/x");
     expect(pr).toEqual(prData);
   });
 
-  test("getCurrentPR returns null when no PR", async () => {
-    const runner: CommandRunner = async () => {
-      throw new Error("no PR found");
-    };
+  test("getCurrentPR returns null when no PR exists (empty array)", async () => {
+    // gh pr list returns empty array with exit code 0 when no PR exists
+    const runner = createFakeRunner({
+      "pr list --head": JSON.stringify([]),
+    });
     const gh = createGitHubService(runner, "/tmp/test");
-    const pr = await gh.getCurrentPR();
+    const pr = await gh.getCurrentPR("no-pr-branch");
     expect(pr).toBeNull();
   });
 
-  test("getCIChecks parses response", async () => {
-    const prData = {
-      number: 1,
-      title: "PR",
-      state: "OPEN",
-      url: "",
-      headRefName: "feat",
-      baseRefName: "main",
-      body: "",
+  test("getCurrentPR throws on API errors", async () => {
+    // gh pr list returns exit code 1 on real API errors (network, auth)
+    const runner: CommandRunner = async () => {
+      throw new Error("Command failed: gh pr list\nHTTP 500");
     };
+    const gh = createGitHubService(runner, "/tmp/test");
+    await expect(gh.getCurrentPR("some-branch")).rejects.toThrow("HTTP 500");
+  });
+
+  test("getCIChecks parses response", async () => {
     const graphqlResponse = {
       data: {
         repository: {
@@ -79,12 +80,11 @@ describe("createGitHubService", () => {
       },
     };
     const runner = createFakeRunner({
-      "pr view --json": JSON.stringify(prData),
       "repo view --json": JSON.stringify({ owner: { login: "test" }, name: "repo" }),
       "api graphql": JSON.stringify(graphqlResponse),
     });
     const gh = createGitHubService(runner, "/tmp/test");
-    const checks = await gh.getCIChecks();
+    const checks = await gh.getCIChecks({ prNumber: 1 });
     expect(checks).toEqual([
       { name: "ci", status: "COMPLETED", conclusion: "SUCCESS", url: "https://example.com" },
     ]);
@@ -95,7 +95,7 @@ describe("createGitHubService", () => {
       throw new Error("no checks");
     };
     const gh = createGitHubService(runner, "/tmp/test");
-    const checks = await gh.getCIChecks();
+    const checks = await gh.getCIChecks({ prNumber: 1 });
     expect(checks).toEqual([]);
   });
 
@@ -103,7 +103,7 @@ describe("createGitHubService", () => {
     let capturedCwd: string | undefined;
     const runner: CommandRunner = async (cmd, options) => {
       capturedCwd = options?.cwd;
-      return JSON.stringify({
+      return JSON.stringify([{
         number: 1,
         title: "",
         state: "",
@@ -111,10 +111,10 @@ describe("createGitHubService", () => {
         headRefName: "",
         baseRefName: "",
         body: "",
-      });
+      }]);
     };
     const gh = createGitHubService(runner, "/my/project");
-    await gh.getCurrentPR();
+    await gh.getCurrentPR("main");
     expect(capturedCwd).toBe("/my/project");
   });
 });

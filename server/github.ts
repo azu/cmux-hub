@@ -34,18 +34,26 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
   const gh = (args: string[]) => run(["gh", ...args], { cwd });
 
   return {
-    async getCurrentPR(): Promise<PRInfo | null> {
-      try {
-        const raw = await gh([
-          "pr",
-          "view",
-          "--json",
-          "number,title,state,url,headRefName,baseRefName,body",
-        ]);
-        return JSON.parse(raw);
-      } catch {
-        return null;
-      }
+    // Use `gh pr list` instead of `gh pr view` to distinguish "no PR" from API errors.
+    // `gh pr view` returns exit code 1 for both cases, making them indistinguishable.
+    // `gh pr list` returns exit code 0 with empty array when no PR exists,
+    // and exit code 1 only on real API errors (network, auth).
+    // ref: https://github.com/cli/cli — `gh pr view` vs `gh pr list` exit code behavior
+    async getCurrentPR(branch: string): Promise<PRInfo | null> {
+      const raw = await gh([
+        "pr",
+        "list",
+        "--head",
+        branch,
+        "--state",
+        "all",
+        "--json",
+        "number,title,state,url,headRefName,baseRefName,body",
+        "--limit",
+        "1",
+      ]);
+      const results: PRInfo[] = JSON.parse(raw);
+      return results.length > 0 ? results[0] : null;
     },
 
     async getPRComments(prNumber: number): Promise<PRComment[]> {
@@ -152,10 +160,8 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
       }
     },
 
-    async getCIChecks(): Promise<CICheck[]> {
+    async getCIChecks({ prNumber }: { prNumber: number }): Promise<CICheck[]> {
       try {
-        const pr = await this.getCurrentPR();
-        if (!pr) return [];
         const repoRaw = await gh(["repo", "view", "--json", "owner,name"]);
         const repo = JSON.parse(repoRaw) as { owner: { login: string }; name: string };
         const query = `query($owner: String!, $name: String!, $number: Int!) {
@@ -192,7 +198,7 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
           "-F",
           `name=${repo.name}`,
           "-F",
-          `number=${pr.number}`,
+          `number=${prNumber}`,
         ]);
         const data = JSON.parse(raw);
         const nodes =
