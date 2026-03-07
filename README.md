@@ -5,6 +5,7 @@ Diff viewer for [cmux](https://cmux.dev). Displays branch changes with syntax hi
 ## Features
 
 - Diff view with syntax highlighting (Shiki)
+- Real-time diff updates via WebSocket
 - Untracked and unstaged file detection
 - Commit history browser (when no pending changes)
 - Branch selector for switching diff base
