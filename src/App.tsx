@@ -43,6 +43,7 @@ export default function App() {
   const [checks, setChecks] = useState<Check[]>([]);
   const [prComments, setPrComments] = useState<PRComment[]>([]);
   const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [prTitle, setPrTitle] = useState<string | null>(null);
   const [showCommitList, setShowCommitList] = useState(false);
 
   useEffect(() => {
@@ -58,8 +59,9 @@ export default function App() {
     api
       .getPR()
       .then((r) => {
-        const pr = r.pr as { url?: string; number?: number } | null;
+        const pr = r.pr as { url?: string; title?: string; number?: number } | null;
         if (pr?.url) setPrUrl(pr.url);
+        if (pr?.title) setPrTitle(pr.title);
         if (pr?.number) {
           api.getCI().then((c) => {
             if (c.checks) setChecks(c.checks as Check[]);
@@ -84,6 +86,7 @@ export default function App() {
           comments?: PRComment[];
         };
         if (data.pr?.url) setPrUrl(data.pr.url);
+        if ((data.pr as { title?: string })?.title) setPrTitle((data.pr as { title: string }).title);
         if (data.checks) setChecks(data.checks);
         if (data.comments) setPrComments(data.comments);
       }
@@ -102,7 +105,6 @@ export default function App() {
       )}
       <Toolbar
         branch={branch}
-        prUrl={prUrl}
         onRefresh={refresh}
         hasTerminal={hasTerminal}
         actions={actions}
@@ -111,9 +113,9 @@ export default function App() {
       <div
         className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
       >
-        {checks.length > 0 && (
+        {(checks.length > 0 || prUrl) && (
           <div className="mb-4">
-            <CIStatus checks={checks} />
+            <CIStatus checks={checks} prTitle={prTitle} prUrl={prUrl} />
           </div>
         )}
         <DiffView
