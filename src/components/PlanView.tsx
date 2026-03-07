@@ -63,9 +63,7 @@ export function PlanView({ onBack, hasTerminal = false }: Props) {
         <button className="text-[#58a6ff] hover:text-[#79c0ff] text-sm" onClick={onBack}>
           ← Back
         </button>
-        {planPath && (
-          <span className="text-[#848d97] text-sm font-mono truncate">{planPath}</span>
-        )}
+        {planPath && <span className="text-[#848d97] text-sm font-mono truncate">{planPath}</span>}
       </div>
       {files.map((file, idx) => (
         <DiffFile
