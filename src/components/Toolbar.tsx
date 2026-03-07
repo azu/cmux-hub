@@ -84,7 +84,7 @@ function SubmenuButton({
         {label} ▾
       </Button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 bg-[#21262d] border border-[#30363d] rounded-md shadow-lg z-50 min-w-[160px] flex flex-col">
+        <div className="absolute right-0 bottom-full mb-1 bg-[#21262d] border border-[#30363d] rounded-md shadow-lg z-50 min-w-[160px] flex flex-col">
           {items.map((item, i) => (
             <SimpleActionButton
               key={item.label}
@@ -166,7 +166,7 @@ export function Toolbar({
   return (
     <div
       data-testid="toolbar"
-      className="border-b border-[#30363d] bg-[#161b22] px-4 py-2 overflow-x-hidden"
+      className="border-b border-[#30363d] bg-[#161b22] px-4 py-2"
     >
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1">
