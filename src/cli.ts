@@ -152,7 +152,8 @@ const app = createAppConfig({
   actions,
 });
 
-const isDev = import.meta.hot !== undefined;
+// Detect dev mode: compiled binary sets Bun.main differently
+const isDev = !process.execPath.includes("cmux-hub");
 
 const server = serve({
   port: PORT,
