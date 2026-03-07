@@ -287,7 +287,7 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
         <span className="text-[#adbac7] font-mono text-sm flex-1">{file.newPath}</span>
         {onComment && (
           <button
-            className="text-[#848d97] hover:text-[#58a6ff] text-xs px-2 py-0.5 rounded hover:bg-[#30363d] transition-colors"
+            className="text-[#848d97] hover:text-[#58a6ff] text-sm px-4 py-1.5 rounded hover:bg-[#30363d] transition-colors"
             onClick={(e) => {
               e.stopPropagation();
               setShowFileComment((v) => !v);
