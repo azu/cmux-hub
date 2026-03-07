@@ -29,7 +29,7 @@ type AppDeps = {
   actions?: MenuItem[];
   watcher?: {
     start(): void;
-    onChanged(cb: () => void): void;
+    onChanged(cb: (event: { hasRefChange: boolean }) => void): void;
     stop(): void;
   };
 };
@@ -87,12 +87,30 @@ export function createAppConfig(deps: AppDeps) {
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   async function pollGitHub() {
+    let pr: Awaited<ReturnType<typeof github.getCurrentPR>>;
     try {
-      const pr = await github.getCurrentPR();
-      cachedPR = pr;
-      if (!pr) return;
+      const branch = await git.getCurrentBranch();
+      pr = await github.getCurrentPR(branch);
+    } catch {
+      // API error (network, auth, etc.) — keep cached values, skip update
+      return;
+    }
+    cachedPR = pr;
+    if (!pr) {
+      cachedChecks = [];
+      cachedComments = [];
+      const message = JSON.stringify({
+        type: "pr-updated",
+        data: { pr: null, checks: [], comments: [] },
+      });
+      for (const ws of wsClients.keys()) {
+        ws.send(message);
+      }
+      return;
+    }
+    try {
       const [checks, comments] = await Promise.all([
-        github.getCIChecks(),
+        github.getCIChecks({ prNumber: pr.number }),
         github.getPRComments(pr.number),
       ]);
       cachedChecks = checks;
@@ -105,7 +123,7 @@ export function createAppConfig(deps: AppDeps) {
         ws.send(message);
       }
     } catch {
-      // ignore polling errors
+      // CI/comments fetch error — keep PR info but don't update checks/comments
     }
   }
 
@@ -507,10 +525,14 @@ export function createAppConfig(deps: AppDeps) {
     startWatcher() {
       if (deps.watcher) {
         deps.watcher.start();
-        deps.watcher.onChanged(() => {
+        deps.watcher.onChanged((event) => {
           const message = JSON.stringify({ type: "diff-updated" });
           for (const ws of wsClients.keys()) {
             ws.send(message);
+          }
+          // On ref changes (push, fetch, branch switch), poll GitHub immediately
+          if (event.hasRefChange) {
+            pollGitHub();
           }
         });
       }

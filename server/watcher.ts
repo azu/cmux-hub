@@ -55,20 +55,31 @@ export const defaultWatcherFactory: WatcherFactory = (dir, callback) => {
 
 export type FileWatcher = ReturnType<typeof createFileWatcher>;
 
+export type ChangeEvent = {
+  hasRefChange: boolean;
+};
+export type ChangeListener = (event: ChangeEvent) => void;
+
 export function createFileWatcher(factory: WatcherFactory, cwd: string) {
   let watcher: { close: () => void } | null = null;
-  const listeners = new Set<() => void>();
+  const listeners = new Set<ChangeListener>();
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let pendingRefChange = false;
 
   return {
     start() {
       if (watcher) return;
-      watcher = factory(cwd, (_event, _filename) => {
+      watcher = factory(cwd, (_event, filename) => {
+        if (filename && (filename.includes("refs/") || filename.endsWith("HEAD"))) {
+          pendingRefChange = true;
+        }
         // Debounce notifications
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
+          const event: ChangeEvent = { hasRefChange: pendingRefChange };
+          pendingRefChange = false;
           for (const listener of listeners) {
-            listener();
+            listener(event);
           }
         }, 300);
       });
@@ -85,7 +96,7 @@ export function createFileWatcher(factory: WatcherFactory, cwd: string) {
       }
     },
 
-    onChanged(listener: () => void) {
+    onChanged(listener: ChangeListener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
