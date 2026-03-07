@@ -102,8 +102,8 @@ When launched inside cmux, cmux-hub automatically opens a browser split pane and
 
 ```json
 [
-  { "label": "Commit", "type": "paste-and-enter", "command": "/commit" },
-  { "label": "Create PR", "type": "paste-and-enter", "command": "/create-pr" }
+  { "label": "Commit", "type": "paste-and-enter", "command": "commit this change" },
+  { "label": "Create PR", "type": "paste-and-enter", "command": "create a pull request" }
 ]
 ```
 
@@ -276,7 +276,7 @@ bun --hot src/cli.ts
 # With custom actions
 bun --hot src/cli.ts --actions - <<'EOF'
 [
-  { "label": "Commit", "type": "paste-and-enter", "command": "/commit" },
+  { "label": "Commit", "type": "paste-and-enter", "command": "commit this change" },
   { "label": "Push", "type": "shell", "command": "git push" }
 ]
 EOF
