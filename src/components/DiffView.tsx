@@ -5,6 +5,16 @@ import { DiffFile } from "./DiffFile.tsx";
 import { CommitList } from "./CommitList.tsx";
 import { api } from "../lib/api.ts";
 
+type PRComment = {
+  id: number;
+  body: string;
+  user: string;
+  path: string;
+  line: number;
+  createdAt: string;
+  isResolved: boolean;
+};
+
 type Props = {
   diff: ParsedDiff;
   loading: boolean;
@@ -14,6 +24,7 @@ type Props = {
   selectedCommit?: SelectedCommit | null;
   showCommitList?: boolean;
   hasUncommittedChanges?: boolean;
+  prComments?: PRComment[];
   onSelectCommit?: (commit: SelectedCommit) => void;
   onClearCommit?: () => void;
 };
@@ -27,6 +38,7 @@ export function DiffView({
   selectedCommit,
   showCommitList,
   hasUncommittedChanges,
+  prComments = [],
   onSelectCommit,
   onClearCommit,
 }: Props) {
@@ -81,9 +93,7 @@ export function DiffView({
       return <CommitList onSelectCommit={onSelectCommit} />;
     }
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">
-        No changes detected
-      </div>
+      <div className="flex items-center justify-center h-64 text-gray-500">No changes detected</div>
     );
   }
 
@@ -91,10 +101,7 @@ export function DiffView({
     <div data-testid="diff-view" className="space-y-2">
       {selectedCommit && onClearCommit && (
         <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border border-[#30363d] rounded-md">
-          <button
-            className="text-[#58a6ff] hover:text-[#79c0ff] text-sm"
-            onClick={onClearCommit}
-          >
+          <button className="text-[#58a6ff] hover:text-[#79c0ff] text-sm" onClick={onClearCommit}>
             ← Back to auto-diff
           </button>
           <span className="text-[#848d97] text-sm">
@@ -108,6 +115,7 @@ export function DiffView({
           key={`${file.newPath}-${idx}`}
           file={file}
           onComment={hasTerminal ? handleComment : undefined}
+          prComments={prComments.filter((c) => c.path === file.newPath)}
         />
       ))}
     </div>

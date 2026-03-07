@@ -2,7 +2,18 @@ import React, { useState, useCallback, useEffect, useMemo } from "react";
 import type { DiffFile as DiffFileType, DiffLine as DiffLineType } from "../lib/diff-parser.ts";
 import { DiffLine } from "./DiffLine.tsx";
 import { CommentForm } from "./CommentForm.tsx";
+import { InlinePRComment } from "./PRComments.tsx";
 import { api } from "../lib/api.ts";
+
+type PRCommentData = {
+  id: number;
+  body: string;
+  user: string;
+  path: string;
+  line: number;
+  createdAt: string;
+  isResolved: boolean;
+};
 
 type FlatLine = {
   type: "line";
@@ -29,11 +40,12 @@ type FlatItem = FlatLine | FlatHunkHeader | FlatExpandButton;
 type Props = {
   file: DiffFileType;
   onComment?: (file: string, startLine: number, endLine: number, comment: string) => void;
+  prComments?: PRCommentData[];
 };
 
 const EXPAND_LINES = 20;
 
-export function DiffFile({ file, onComment }: Props) {
+export function DiffFile({ file, onComment, prComments = [] }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [selStart, setSelStart] = useState<number | null>(null);
   const [selEnd, setSelEnd] = useState<number | null>(null);
@@ -127,6 +139,21 @@ export function DiffFile({ file, onComment }: Props) {
 
     return items;
   }, [file.hunks, expandedLines]);
+
+  // Group PR comments by line number
+  const commentsByLine = useMemo(() => {
+    const map = new Map<number, PRCommentData[]>();
+    for (const c of prComments) {
+      if (c.line === null) continue;
+      const existing = map.get(c.line);
+      if (existing) {
+        existing.push(c);
+      } else {
+        map.set(c.line, [c]);
+      }
+    }
+    return map;
+  }, [prComments]);
 
   const selMin = selStart !== null && selEnd !== null ? Math.min(selStart, selEnd) : null;
   const selMax = selStart !== null && selEnd !== null ? Math.max(selStart, selEnd) : null;
@@ -301,6 +328,9 @@ export function DiffFile({ file, onComment }: Props) {
                 selMin !== null && selMax !== null && item.index >= selMin && item.index <= selMax;
               const isEndOfSelection = showComment && item.index === selMax;
 
+              const lineNum = item.line.newLineNumber;
+              const lineComments = lineNum !== null ? commentsByLine.get(lineNum) : undefined;
+
               return (
                 <React.Fragment key={`line-${item.index}`}>
                   <DiffLine
@@ -312,6 +342,17 @@ export function DiffFile({ file, onComment }: Props) {
                     onMouseDown={onComment ? () => handleMouseDown(item.index) : undefined}
                     onMouseEnter={onComment ? () => handleMouseEnter(item.index) : undefined}
                   />
+                  {lineComments &&
+                    lineComments.map((c) => (
+                      <tr key={`pr-comment-${c.id}`}>
+                        <td
+                          colSpan={4}
+                          className="px-4 py-1 bg-[#1c2128] border-l-2 border-[#58a6ff]"
+                        >
+                          <InlinePRComment comment={c} filePath={file.newPath} />
+                        </td>
+                      </tr>
+                    ))}
                   {isEndOfSelection && (
                     <tr>
                       <td colSpan={4} className="p-2 bg-gray-900">

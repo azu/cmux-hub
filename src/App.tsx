@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { DiffView } from "./components/DiffView.tsx";
 import { Toolbar } from "./components/Toolbar.tsx";
 import { CIStatus } from "./components/CIStatus.tsx";
-import { PRComments } from "./components/PRComments.tsx";
 import { useDiff } from "./hooks/useDiff.ts";
 import { useWebSocket } from "./hooks/useWebSocket.ts";
 import { api } from "./lib/api.ts";
@@ -23,6 +22,7 @@ type PRComment = {
   path: string;
   line: number;
   createdAt: string;
+  isResolved: boolean;
 };
 
 export default function App() {
@@ -42,6 +42,8 @@ export default function App() {
   const [actions, setActions] = useState<MenuItem[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
   const [prComments, setPrComments] = useState<PRComment[]>([]);
+  const [prUrl, setPrUrl] = useState<string | null>(null);
+  const [prTitle, setPrTitle] = useState<string | null>(null);
   const [showCommitList, setShowCommitList] = useState(false);
 
   useEffect(() => {
@@ -53,6 +55,23 @@ export default function App() {
         if (s.actions) setActions(s.actions);
       })
       .catch(() => {});
+    // Fetch PR data immediately on load
+    api
+      .getPR()
+      .then((r) => {
+        const pr = r.pr as { url?: string; title?: string; number?: number } | null;
+        if (pr?.url) setPrUrl(pr.url);
+        if (pr?.title) setPrTitle(pr.title);
+        if (pr?.number) {
+          api.getCI().then((c) => {
+            if (c.checks) setChecks(c.checks as Check[]);
+          });
+          api.getPRComments().then((c) => {
+            if (c.comments) setPrComments(c.comments as PRComment[]);
+          });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleWSMessage = useCallback(
@@ -61,7 +80,14 @@ export default function App() {
         refresh();
       }
       if (msg.type === "pr-updated" && msg.data) {
-        const data = msg.data as { checks?: Check[]; comments?: PRComment[] };
+        const data = msg.data as {
+          pr?: { url?: string };
+          checks?: Check[];
+          comments?: PRComment[];
+        };
+        if (data.pr?.url) setPrUrl(data.pr.url);
+        if ((data.pr as { title?: string })?.title)
+          setPrTitle((data.pr as { title: string }).title);
         if (data.checks) setChecks(data.checks);
         if (data.comments) setPrComments(data.comments);
       }
@@ -88,34 +114,30 @@ export default function App() {
       <div
         className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
       >
-        <div className="flex gap-4">
-          <div className="flex-1 min-w-0">
-            <DiffView
-              diff={diff}
-              loading={loading}
-              error={error}
-              onRefresh={refresh}
-              hasTerminal={hasTerminal}
-              selectedCommit={selectedCommit}
-              showCommitList={showCommitList}
-              hasUncommittedChanges={hasUncommittedChanges}
-              onSelectCommit={(commit) => {
-                setShowCommitList(false);
-                selectCommit(commit);
-              }}
-              onClearCommit={() => {
-                setShowCommitList(false);
-                clearCommit();
-              }}
-            />
+        {(checks.length > 0 || prUrl) && (
+          <div className="mb-4">
+            <CIStatus checks={checks} prTitle={prTitle} prUrl={prUrl} />
           </div>
-          {(checks.length > 0 || prComments.length > 0) && (
-            <div className="w-72 flex-shrink-0 space-y-4">
-              <CIStatus checks={checks} />
-              <PRComments comments={prComments} />
-            </div>
-          )}
-        </div>
+        )}
+        <DiffView
+          diff={diff}
+          loading={loading}
+          error={error}
+          onRefresh={refresh}
+          hasTerminal={hasTerminal}
+          selectedCommit={selectedCommit}
+          showCommitList={showCommitList}
+          hasUncommittedChanges={hasUncommittedChanges}
+          prComments={prComments.filter((c) => !c.isResolved)}
+          onSelectCommit={(commit) => {
+            setShowCommitList(false);
+            selectCommit(commit);
+          }}
+          onClearCommit={() => {
+            setShowCommitList(false);
+            clearCommit();
+          }}
+        />
       </div>
     </div>
   );
