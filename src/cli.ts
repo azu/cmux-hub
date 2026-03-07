@@ -213,7 +213,7 @@ async function waitForBrowserClose(surfaceRef: string) {
 // bun --hot re-executes top-level code on every change.
 // Store the browser surface ref in globalThis to avoid opening a new window each time.
 const existingSurface = (globalThis as Record<string, unknown>).__cmuxHubBrowserSurface as string | undefined;
-if (existingSurface && await isSurfaceAlive(existingSurface)) {
+if (existingSurface) {
   logger.debug("reusing existing browser surface:", existingSurface);
   waitForBrowserClose(existingSurface);
 } else {
