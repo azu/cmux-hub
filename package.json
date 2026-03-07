@@ -1,6 +1,6 @@
 {
   "name": "cmux-hub",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "bin": {
     "cmux-hub": "./src/cli.ts"
