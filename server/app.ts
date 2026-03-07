@@ -499,9 +499,9 @@ export function createAppConfig(deps: AppDeps) {
   return {
     apiRoutes,
 
-    setServer(server: { upgrade(req: Request, opts: { data: unknown }): boolean; port: number }) {
+    setServer(server: { upgrade(req: Request, opts: { data: unknown }): boolean; port: number | undefined }) {
       upgradeServer = server;
-      securityConfig.port = server.port;
+      securityConfig.port = server.port ?? 0;
     },
 
     websocket: {
