@@ -18,6 +18,9 @@
     "typecheck": "bun run --bun tsc --noEmit",
     "test:e2e": "bunx playwright test e2e/smoke.spec.ts",
     "screenshots": "bunx playwright test e2e/screenshots.spec.ts",
+    "version:patch": "npm version patch && git push && git push --tags",
+    "version:minor": "npm version minor && git push && git push --tags",
+    "version:major": "npm version major && git push && git push --tags",
     "prepare": "git config --local core.hooksPath .githooks || echo 'Can not set git hooks'"
   },
   "dependencies": {
