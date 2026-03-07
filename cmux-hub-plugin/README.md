@@ -10,9 +10,9 @@ Claude Code plugin that auto-launches [cmux-hub](https://github.com/azu/cmux-hub
 
 ## Install
 
-```shell
-/plugin marketplace add azu/cmux-hub
-/plugin install cmux-hub@cmux-hub-marketplace
+```bash
+claude plugin marketplace add azu/cmux-hub
+claude plugin install cmux-hub@cmux-hub-marketplace
 ```
 
 ## Customize actions

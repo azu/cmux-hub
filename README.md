@@ -102,9 +102,9 @@ When launched inside cmux, cmux-hub automatically opens a browser split pane and
 
 Install as a Claude Code plugin. This auto-installs the binary, sets up SessionStart hooks, and copies default actions to `.claude/cmux-hub.json`.
 
-```shell
-/plugin marketplace add azu/cmux-hub
-/plugin install cmux-hub@cmux-hub-marketplace
+```bash
+claude plugin marketplace add azu/cmux-hub
+claude plugin install cmux-hub@cmux-hub-marketplace
 ```
 
 #### Manual setup
