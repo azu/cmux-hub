@@ -10,6 +10,7 @@ import {
 } from "./middleware/security.ts";
 import { parseDiff } from "../src/lib/diff-parser.ts";
 import { highlightDiffFiles } from "./diff-highlight.ts";
+import { getLangFromPath, highlightLines } from "./highlighter.ts";
 import { logger } from "./logger.ts";
 import type { MenuItem } from "./actions.ts";
 import { buildCommandWithEnv, findAction } from "./actions.ts";
@@ -217,7 +218,9 @@ export function createAppConfig(deps: AppDeps) {
           const end = parseInt(url.searchParams.get("end") ?? "1", 10);
           if (!path) return errorResponse("path required", 400);
           const lines = await git.getFileLines(path, start, end);
-          return jsonResponse({ lines });
+          const lang = getLangFromPath(path);
+          const tokenLines = await highlightLines(lines.join("\n"), lang);
+          return jsonResponse({ lines, tokenLines });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }

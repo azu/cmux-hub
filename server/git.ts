@@ -2,8 +2,22 @@ import path from "node:path";
 
 export type CommandRunner = (cmd: string[], options?: { cwd?: string }) => Promise<string>;
 
+// Bun.spawn may not find binaries via PATH in compiled binaries or bun --hot.
+// Resolve once and cache the absolute path.
+const binCache = new Map<string, string>();
+
+export function resolveBin(name: string): string {
+  let resolved = binCache.get(name);
+  if (resolved === undefined) {
+    resolved = Bun.which(name) ?? name;
+    binCache.set(name, resolved);
+  }
+  return resolved;
+}
+
 export const defaultCommandRunner: CommandRunner = async (cmd, options) => {
-  const proc = Bun.spawn(cmd, {
+  const [name = "", ...args] = cmd;
+  const proc = Bun.spawn([resolveBin(name), ...args], {
     cwd: options?.cwd,
     stdout: "pipe",
     stderr: "pipe",
