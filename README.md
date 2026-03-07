@@ -50,6 +50,16 @@ Update screenshots: `bun run screenshots`
 - Auto-shutdown when browser tab closes
 - Git worktree support
 
+## Prerequisites
+
+cmux-hub connects to the cmux Unix socket (`/tmp/cmux.sock`). The default socket mode only allows cmux child processes to connect.
+
+If you launch cmux-hub from within cmux (e.g. Claude Code commands, terminal shell), the default mode works. If you launch from an external process (Alfred, Raycast, Karabiner Elements, etc.), set **Automation mode**:
+
+> cmux Settings → Automation → Socket Control Mode → **Automation mode**
+
+Or set `CMUX_SOCKET_MODE=allowAll`.
+
 ## Install
 
 Download binary from [GitHub Releases](https://github.com/azu/cmux-hub/releases/latest):
