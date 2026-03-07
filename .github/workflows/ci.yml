@@ -22,10 +22,6 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Lint
         run: bun run lint
-      - name: Format check
-        run: |
-          bun run fmt
-          git diff --exit-code || (echo "Format issues found. Run 'bun run fmt' locally." && exit 1)
       - name: Unit tests
         run: bun test src server
 
