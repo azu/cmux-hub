@@ -107,6 +107,8 @@ claude plugin marketplace add azu/cmux-hub
 claude plugin install cmux-hub@cmux-hub-marketplace
 ```
 
+The first session start downloads the binary, so it may take a few seconds to launch.
+
 Update the plugin:
 
 ```bash
