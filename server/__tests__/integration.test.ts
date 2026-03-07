@@ -97,7 +97,7 @@ let server_: ReturnType<typeof serve>;
 let app: ReturnType<typeof createAppConfig>;
 let sentTexts: string[];
 
-beforeAll(() => {
+beforeAll(async () => {
   const { runner } = createFakeRunner();
   sentTexts = [];
 
@@ -129,6 +129,7 @@ beforeAll(() => {
   });
 
   app.setServer(server_);
+  await app.pollGitHub();
 });
 
 afterAll(() => {

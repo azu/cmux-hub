@@ -79,27 +79,41 @@ export function createAppConfig(deps: AppDeps) {
     }
   }
 
+  // Cached GitHub data — updated by polling, served by API endpoints
+  let cachedPR: Awaited<ReturnType<typeof github.getCurrentPR>> = null;
+  let cachedChecks: Awaited<ReturnType<typeof github.getCIChecks>> = [];
+  let cachedComments: Awaited<ReturnType<typeof github.getPRComments>> = [];
+
   let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+  async function pollGitHub() {
+    try {
+      const pr = await github.getCurrentPR();
+      cachedPR = pr;
+      if (!pr) return;
+      const [checks, comments] = await Promise.all([
+        github.getCIChecks(),
+        github.getPRComments(pr.number),
+      ]);
+      cachedChecks = checks;
+      cachedComments = comments;
+      const message = JSON.stringify({
+        type: "pr-updated",
+        data: { pr, checks, comments },
+      });
+      for (const ws of wsClients.keys()) {
+        ws.send(message);
+      }
+    } catch {
+      // ignore polling errors
+    }
+  }
 
   function startPolling() {
     if (pollTimer) return;
-    pollTimer = setInterval(async () => {
-      try {
-        const pr = await github.getCurrentPR();
-        if (!pr) return;
-        const checks = await github.getCIChecks();
-        const comments = await github.getPRComments(pr.number);
-        const message = JSON.stringify({
-          type: "pr-updated",
-          data: { pr, checks, comments },
-        });
-        for (const ws of wsClients.keys()) {
-          ws.send(message);
-        }
-      } catch {
-        // ignore polling errors
-      }
-    }, 10000);
+    // Fetch immediately, then poll every 10s
+    pollGitHub();
+    pollTimer = setInterval(pollGitHub, 10000);
   }
 
   function addSecurityHeaders(response: Response): Response {
@@ -247,10 +261,7 @@ export function createAppConfig(deps: AppDeps) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
         try {
-          const [status, branch] = await Promise.all([
-            git.getStatus(),
-            git.getCurrentBranch(),
-          ]);
+          const [status, branch] = await Promise.all([git.getStatus(), git.getCurrentBranch()]);
           return jsonResponse({
             status,
             branch,
@@ -383,43 +394,26 @@ export function createAppConfig(deps: AppDeps) {
     },
 
     "/api/pr": {
-      async GET(req: Request) {
+      GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
-        try {
-          const pr = await github.getCurrentPR();
-          return jsonResponse({ pr });
-        } catch (e) {
-          return errorResponse(e instanceof Error ? e.message : "Unknown error");
-        }
+        return jsonResponse({ pr: cachedPR });
       },
     },
 
     "/api/pr/comments": {
-      async GET(req: Request) {
+      GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
-        try {
-          const pr = await github.getCurrentPR();
-          if (!pr) return jsonResponse({ comments: [] });
-          const comments = await github.getPRComments(pr.number);
-          return jsonResponse({ comments });
-        } catch (e) {
-          return errorResponse(e instanceof Error ? e.message : "Unknown error");
-        }
+        return jsonResponse({ comments: cachedComments });
       },
     },
 
     "/api/ci": {
-      async GET(req: Request) {
+      GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
-        try {
-          const checks = await github.getCIChecks();
-          return jsonResponse({ checks });
-        } catch (e) {
-          return errorResponse(e instanceof Error ? e.message : "Unknown error");
-        }
+        return jsonResponse({ checks: cachedChecks });
       },
     },
   };
@@ -521,6 +515,9 @@ export function createAppConfig(deps: AppDeps) {
         });
       }
     },
+
+    /** Fetch GitHub data once (for tests or initial load) */
+    pollGitHub,
 
     stop() {
       if (pollTimer) {
