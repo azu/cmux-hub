@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from "react";
 import { DiffView } from "./components/DiffView.tsx";
 import { Toolbar } from "./components/Toolbar.tsx";
 import { CIStatus } from "./components/CIStatus.tsx";
-import { PRComments } from "./components/PRComments.tsx";
 import { useDiff } from "./hooks/useDiff.ts";
 import { useWebSocket } from "./hooks/useWebSocket.ts";
 import { api } from "./lib/api.ts";
@@ -23,6 +22,7 @@ type PRComment = {
   path: string;
   line: number;
   createdAt: string;
+  isResolved: boolean;
 };
 
 export default function App() {
@@ -88,34 +88,30 @@ export default function App() {
       <div
         className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
       >
-        <div className="flex gap-4">
-          <div className="flex-1 min-w-0">
-            <DiffView
-              diff={diff}
-              loading={loading}
-              error={error}
-              onRefresh={refresh}
-              hasTerminal={hasTerminal}
-              selectedCommit={selectedCommit}
-              showCommitList={showCommitList}
-              hasUncommittedChanges={hasUncommittedChanges}
-              onSelectCommit={(commit) => {
-                setShowCommitList(false);
-                selectCommit(commit);
-              }}
-              onClearCommit={() => {
-                setShowCommitList(false);
-                clearCommit();
-              }}
-            />
+        {checks.length > 0 && (
+          <div className="mb-4">
+            <CIStatus checks={checks} />
           </div>
-          {(checks.length > 0 || prComments.length > 0) && (
-            <div className="w-72 flex-shrink-0 space-y-4">
-              <CIStatus checks={checks} />
-              <PRComments comments={prComments} />
-            </div>
-          )}
-        </div>
+        )}
+        <DiffView
+          diff={diff}
+          loading={loading}
+          error={error}
+          onRefresh={refresh}
+          hasTerminal={hasTerminal}
+          selectedCommit={selectedCommit}
+          showCommitList={showCommitList}
+          hasUncommittedChanges={hasUncommittedChanges}
+          prComments={prComments.filter((c) => !c.isResolved)}
+          onSelectCommit={(commit) => {
+            setShowCommitList(false);
+            selectCommit(commit);
+          }}
+          onClearCommit={() => {
+            setShowCommitList(false);
+            clearCommit();
+          }}
+        />
       </div>
     </div>
   );

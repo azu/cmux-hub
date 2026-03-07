@@ -5,6 +5,16 @@ import { DiffFile } from "./DiffFile.tsx";
 import { CommitList } from "./CommitList.tsx";
 import { api } from "../lib/api.ts";
 
+type PRComment = {
+  id: number;
+  body: string;
+  user: string;
+  path: string;
+  line: number;
+  createdAt: string;
+  isResolved: boolean;
+};
+
 type Props = {
   diff: ParsedDiff;
   loading: boolean;
@@ -14,6 +24,7 @@ type Props = {
   selectedCommit?: SelectedCommit | null;
   showCommitList?: boolean;
   hasUncommittedChanges?: boolean;
+  prComments?: PRComment[];
   onSelectCommit?: (commit: SelectedCommit) => void;
   onClearCommit?: () => void;
 };
@@ -27,6 +38,7 @@ export function DiffView({
   selectedCommit,
   showCommitList,
   hasUncommittedChanges,
+  prComments = [],
   onSelectCommit,
   onClearCommit,
 }: Props) {
@@ -108,6 +120,7 @@ export function DiffView({
           key={`${file.newPath}-${idx}`}
           file={file}
           onComment={hasTerminal ? handleComment : undefined}
+          prComments={prComments.filter((c) => c.path === file.newPath)}
         />
       ))}
     </div>
