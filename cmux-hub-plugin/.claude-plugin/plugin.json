@@ -8,9 +8,5 @@
   "homepage": "https://github.com/azu/cmux-hub",
   "repository": "https://github.com/azu/cmux-hub",
   "license": "MIT",
-  "keywords": [
-    "cmux",
-    "diff",
-    "viewer"
-  ]
+  "keywords": ["cmux", "diff", "viewer"]
 }
