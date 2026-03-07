@@ -80,6 +80,7 @@ export default function App() {
     (msg: { type: string; data?: unknown }) => {
       if (msg.type === "diff-updated") {
         refresh();
+        api.getStatus().then((s) => setBranch(s.branch)).catch((e) => console.error("Failed to fetch branch status", e));
       }
       if (msg.type === "pr-updated" && msg.data) {
         const data = msg.data as {
