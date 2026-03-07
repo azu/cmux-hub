@@ -152,7 +152,14 @@ function InputRow({
   );
 }
 
-export function Toolbar({ branch, prUrl, onRefresh, hasTerminal, actions, onShowCommitList }: Props) {
+export function Toolbar({
+  branch,
+  prUrl,
+  onRefresh,
+  hasTerminal,
+  actions,
+  onShowCommitList,
+}: Props) {
   const [sending, setSending] = useState(false);
   const [activeInput, setActiveInput] = useState<string | null>(null);
 
