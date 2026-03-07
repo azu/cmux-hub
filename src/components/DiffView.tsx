@@ -75,7 +75,7 @@ export function DiffView({
       <div>
         <div className="max-w-3xl mx-auto mb-3">
           <button className="text-[#58a6ff] hover:text-[#79c0ff] text-sm" onClick={onClearCommit}>
-            ← Back to auto-diff
+            ← Back
           </button>
         </div>
         <CommitList
@@ -102,7 +102,7 @@ export function DiffView({
       {selectedCommit && onClearCommit && (
         <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border border-[#30363d] rounded-md">
           <button className="text-[#58a6ff] hover:text-[#79c0ff] text-sm" onClick={onClearCommit}>
-            ← Back to auto-diff
+            ← Back
           </button>
           <span className="text-[#848d97] text-sm">
             <span className="font-mono text-[#58a6ff]">{selectedCommit.hash}</span>{" "}
