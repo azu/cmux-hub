@@ -107,6 +107,12 @@ claude plugin marketplace add azu/cmux-hub
 claude plugin install cmux-hub@cmux-hub-marketplace
 ```
 
+Update the plugin:
+
+```bash
+claude plugin update cmux-hub@cmux-hub-marketplace
+```
+
 #### Manual setup
 
 `.claude/cmux-hub.json`:
