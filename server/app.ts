@@ -441,9 +441,35 @@ export function createAppConfig(deps: AppDeps) {
               stdout: "pipe",
               stderr: "pipe",
             });
-            const stdout = await new Response(proc.stdout).text();
-            const stderr = await new Response(proc.stderr).text();
-            const exitCode = await proc.exited;
+            // Read stdout/stderr concurrently, but with a timeout.
+            // Commands like `gh browse` / `open` spawn child processes that
+            // inherit pipe FDs, so the pipes never close even after `sh` exits.
+            const SHELL_TIMEOUT_MS = 30_000;
+            const PIPE_GRACE_MS = 500;
+            const timedText = (
+              stream: ReadableStream<Uint8Array>,
+              ms: number
+            ) =>
+              Promise.race([
+                new Response(stream).text(),
+                new Promise<string>((resolve) =>
+                  setTimeout(() => resolve(""), ms)
+                ),
+              ]);
+            const exitCode = await Promise.race([
+              proc.exited,
+              new Promise<-1>((resolve) =>
+                setTimeout(() => resolve(-1), SHELL_TIMEOUT_MS)
+              ),
+            ]);
+            if (exitCode === -1) {
+              proc.kill();
+            }
+            // Once the process exits, give pipes a short grace period to flush
+            const [stdout, stderr] = await Promise.all([
+              timedText(proc.stdout, PIPE_GRACE_MS),
+              timedText(proc.stderr, PIPE_GRACE_MS),
+            ]);
             return jsonResponse({
               ok: exitCode === 0,
               command: fullCommand,
