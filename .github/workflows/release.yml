@@ -23,10 +23,8 @@ jobs:
       - name: Compile binary
         run: |
           mkdir -p dist/bin
-          bun build --compile --minify \
-            --target=bun-darwin-arm64 \
-            ./src/cli.ts \
-            --outfile dist/bin/cmux-hub-darwin-arm64
+          BUILD_TARGET=bun-darwin-arm64 bun run build-compile.ts
+          mv cmux-hub dist/bin/cmux-hub-darwin-arm64
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: cmux-hub-darwin-arm64
