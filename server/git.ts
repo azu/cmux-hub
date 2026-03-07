@@ -111,6 +111,25 @@ export function createGitService(run: CommandRunner, cwd: string) {
       return git(["log", `--oneline`, `-${count}`]);
     },
 
+    async getLogEntries(count = 20): Promise<Array<{ hash: string; message: string }>> {
+      const raw = await git(["log", "--oneline", `-${count}`]);
+      return raw
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const spaceIdx = line.indexOf(" ");
+          return {
+            hash: line.slice(0, spaceIdx),
+            message: line.slice(spaceIdx + 1),
+          };
+        });
+    },
+
+    async getCommitDiff(hash: string): Promise<string> {
+      return git(["show", "--format=", "--unified=3", hash]);
+    },
+
     async getUntrackedFiles(): Promise<string[]> {
       const raw = await git(["ls-files", "--others", "--exclude-standard"]);
       return raw.trim().split("\n").filter(Boolean);

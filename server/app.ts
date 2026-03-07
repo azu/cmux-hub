@@ -190,6 +190,40 @@ export function createAppConfig(deps: AppDeps) {
       },
     },
 
+    "/api/log": {
+      async GET(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        try {
+          const url = new URL(req.url);
+          const count = parseInt(url.searchParams.get("count") ?? "20", 10);
+          const commits = await git.getLogEntries(count);
+          return jsonResponse({ commits });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/diff/commit": {
+      async GET(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        try {
+          const url = new URL(req.url);
+          const hash = url.searchParams.get("hash");
+          if (!hash) return errorResponse("hash required", 400);
+          // Reject non-hex strings to prevent command injection via git show
+          if (!/^[0-9a-f]{4,40}$/i.test(hash)) return errorResponse("invalid hash", 400);
+          const raw = await git.getCommitDiff(hash);
+          const files = await highlightDiffFiles(parseDiff(raw));
+          return jsonResponse({ diff: raw, files });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
     "/api/branches": {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);

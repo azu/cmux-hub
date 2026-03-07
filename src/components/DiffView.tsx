@@ -1,6 +1,8 @@
 import React, { useCallback } from "react";
 import type { ParsedDiff } from "../lib/diff-parser.ts";
+import type { SelectedCommit } from "../hooks/useDiff.ts";
 import { DiffFile } from "./DiffFile.tsx";
+import { CommitList } from "./CommitList.tsx";
 import { api } from "../lib/api.ts";
 
 type Props = {
@@ -9,9 +11,21 @@ type Props = {
   error: string | null;
   onRefresh: () => void;
   hasTerminal?: boolean;
+  selectedCommit?: SelectedCommit | null;
+  onSelectCommit?: (commit: SelectedCommit) => void;
+  onClearCommit?: () => void;
 };
 
-export function DiffView({ diff, loading, error, onRefresh, hasTerminal = false }: Props) {
+export function DiffView({
+  diff,
+  loading,
+  error,
+  onRefresh,
+  hasTerminal = false,
+  selectedCommit,
+  onSelectCommit,
+  onClearCommit,
+}: Props) {
   const handleComment = useCallback(
     async (file: string, startLine: number, endLine: number, comment: string) => {
       try {
@@ -40,14 +54,33 @@ export function DiffView({ diff, loading, error, onRefresh, hasTerminal = false 
     );
   }
 
-  if (diff.length === 0) {
+  if (diff.length === 0 && !selectedCommit) {
+    if (onSelectCommit) {
+      return <CommitList onSelectCommit={onSelectCommit} />;
+    }
     return (
-      <div className="flex items-center justify-center h-64 text-gray-500">No changes detected</div>
+      <div className="flex items-center justify-center h-64 text-gray-500">
+        No changes detected
+      </div>
     );
   }
 
   return (
     <div data-testid="diff-view" className="space-y-2">
+      {selectedCommit && onClearCommit && (
+        <div className="flex items-center gap-3 px-4 py-2 bg-[#161b22] border border-[#30363d] rounded-md">
+          <button
+            className="text-[#58a6ff] hover:text-[#79c0ff] text-sm"
+            onClick={onClearCommit}
+          >
+            ← Back to auto-diff
+          </button>
+          <span className="text-[#848d97] text-sm">
+            <span className="font-mono text-[#58a6ff]">{selectedCommit.hash}</span>{" "}
+            {selectedCommit.message}
+          </span>
+        </div>
+      )}
       {diff.map((file, idx) => (
         <DiffFile
           key={`${file.newPath}-${idx}`}

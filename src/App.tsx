@@ -26,7 +26,8 @@ type PRComment = {
 };
 
 export default function App() {
-  const { diff, loading, refreshing, error, refresh } = useDiff();
+  const { diff, loading, refreshing, error, refresh, selectedCommit, selectCommit, clearCommit } =
+    useDiff();
   const [branch, setBranch] = useState("...");
   const [hasTerminal, setHasTerminal] = useState(false);
   const [actions, setActions] = useState<MenuItem[]>([]);
@@ -79,6 +80,9 @@ export default function App() {
               error={error}
               onRefresh={refresh}
               hasTerminal={hasTerminal}
+              selectedCommit={selectedCommit}
+              onSelectCommit={selectCommit}
+              onClearCommit={clearCommit}
             />
           </div>
           {(checks.length > 0 || prComments.length > 0) && (

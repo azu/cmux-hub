@@ -48,6 +48,18 @@ export const api = {
     return fetchJSON<{ lines: string[] }>(`/api/file-lines?${params}`);
   },
 
+  getLog(count = 20) {
+    return fetchJSON<{ commits: Array<{ hash: string; message: string }> }>(
+      `/api/log?count=${count}`,
+    );
+  },
+
+  getCommitDiff(hash: string) {
+    return fetchJSON<{ diff: string; files?: import("./diff-parser.ts").ParsedDiff }>(
+      `/api/diff/commit?hash=${encodeURIComponent(hash)}`,
+    );
+  },
+
   getBranches() {
     return fetchJSON<{ branches: string[]; current: string }>("/api/branches");
   },
