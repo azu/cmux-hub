@@ -3,6 +3,7 @@ import { watch } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolveBin } from "./git.ts";
 
+
 export type WatcherCallback = (event: string, filename: string | null) => void;
 export type WatcherFactory = (dir: string, callback: WatcherCallback) => { close: () => void };
 
@@ -32,7 +33,8 @@ export const defaultWatcherFactory: WatcherFactory = (dir, callback) => {
   // Watch working tree (excluding .git internals and node_modules)
   const workTreeWatcher = watch(dir, { recursive: true }, (event, filename) => {
     if (!filename) return;
-    if (filename.startsWith(".git/") || filename.startsWith(".git\\")) {
+    // Filter .git directories (top-level and nested submodules)
+    if (filename.includes("/.git/") || filename.includes("\\.git\\") || filename.startsWith(".git/") || filename.startsWith(".git\\")) {
       const isRefChange =
         filename.includes("refs/") ||
         filename.endsWith("HEAD") ||
@@ -79,6 +81,7 @@ export function createFileWatcher(factory: WatcherFactory, cwd: string) {
     start() {
       if (watcher) return;
       watcher = factory(cwd, (_event, filename) => {
+
         if (filename && (filename.includes("refs/") || filename.endsWith("HEAD"))) {
           pendingRefChange = true;
         }
