@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+# Allow skipping via env (e.g. for development repos)
+if [ "${CMUX_HUB_SKIP:-}" = "1" ]; then
+  exit 0
+fi
+
 PLUGIN_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 USER_ACTIONS="${HOME}/.claude/cmux-hub.json"
 

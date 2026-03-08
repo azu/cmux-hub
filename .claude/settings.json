@@ -1,4 +1,7 @@
 {
+  "env": {
+    "CMUX_HUB_SKIP": "1"
+  },
   "hooks": {
     "SessionStart": [
       {

@@ -29,6 +29,20 @@ Edit `~/.claude/cmux-hub.json` (user-level) or `.claude/cmux-hub.json` (project-
 
 See [Custom Actions](https://github.com/azu/cmux-hub#custom-actions) for all options.
 
+## Skip auto-launch
+
+Set `CMUX_HUB_SKIP=1` in your project's `.claude/settings.json` to prevent the plugin from starting cmux-hub automatically:
+
+```json
+{
+  "env": {
+    "CMUX_HUB_SKIP": "1"
+  }
+}
+```
+
+This is useful when developing cmux-hub itself or running a custom dev server.
+
 ## Prerequisites
 
 cmux-hub connects to the cmux Unix socket. See [Prerequisites](https://github.com/azu/cmux-hub#prerequisites) for socket mode configuration.
