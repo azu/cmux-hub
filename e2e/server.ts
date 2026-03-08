@@ -38,6 +38,9 @@ writeFileSync(
   'export const greeting = "hello world";\nexport const version = 1;\n',
 );
 writeFileSync(join(repoDir, "new-file.ts"), 'export function newModule() {\n  return "new";\n}\n');
+// Add a large file to enable scroll position testing
+const largeFileLines = Array.from({ length: 100 }, (_, i) => `export const line${i} = ${i};`).join("\n");
+writeFileSync(join(repoDir, "large-file.ts"), largeFileLines + "\n");
 gitInRepo("add .");
 
 // Export repoDir so tests can modify files

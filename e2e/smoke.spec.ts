@@ -31,14 +31,15 @@ test("opening the page fetches /api/diff/auto and shows changed files", async ({
   await page.goto("/");
   const diffView = page.getByTestId("diff-view");
   await expect(diffView).toBeVisible();
-  // Two changed files are displayed
+  // Three changed files are displayed (hello.ts, large-file.ts, new-file.ts)
   const diffFiles = diffView.getByTestId("diff-file");
-  await expect(diffFiles).toHaveCount(2);
+  await expect(diffFiles).toHaveCount(3);
   // File paths are shown
   await expect(diffFiles.nth(0)).toContainText("hello.ts");
-  await expect(diffFiles.nth(1)).toContainText("new-file.ts");
+  await expect(diffFiles.nth(1)).toContainText("large-file.ts");
+  await expect(diffFiles.nth(2)).toContainText("new-file.ts");
   // New file has the New badge
-  await expect(diffFiles.nth(1)).toContainText("New");
+  await expect(diffFiles.nth(2)).toContainText("New");
   // Added line content is visible
   await expect(diffFiles.nth(0)).toContainText("hello world");
   // Verify the diff API was called
@@ -51,14 +52,38 @@ test("modifying a file updates the diff view automatically", async ({ page, requ
   const diffView = page.getByTestId("diff-view");
   await expect(diffView).toBeVisible();
   // Verify initial file count
-  await expect(diffView.getByTestId("diff-file")).toHaveCount(2);
+  await expect(diffView.getByTestId("diff-file")).toHaveCount(3);
   // Add a new file to the repo
   writeFileSync(join(repoDir, "added.ts"), "export const added = true;\n");
   execSync("git add added.ts", { cwd: repoDir, stdio: "pipe" });
   // Wait for the diff view to update (watcher debounce + fetch)
-  await expect(diffView.getByTestId("diff-file")).toHaveCount(3);
+  await expect(diffView.getByTestId("diff-file")).toHaveCount(4);
   // The added file is shown
   await expect(diffView).toContainText("added.ts");
+});
+
+test("ファイル変更時にスクロール位置がリセットされない", async ({ page, request }) => {
+  const repoDir = await getRepoDir(request);
+  await page.goto("/");
+  const diffView = page.getByTestId("diff-view");
+  await expect(diffView).toBeVisible();
+  // large-file.ts が表示されていることを確認
+  await expect(diffView.getByTestId("diff-file").filter({ hasText: "large-file.ts" })).toBeVisible();
+  // ページ下部の要素までスクロール
+  const lastFile = diffView.getByTestId("diff-file").last();
+  await lastFile.scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => window.scrollY > 0);
+  // スクロール位置を記録
+  const scrollBefore = await page.evaluate(() => window.scrollY);
+  expect(scrollBefore).toBeGreaterThan(0);
+  // ファイルを変更してwatcherを発火させる
+  writeFileSync(join(repoDir, "large-file.ts"), Array.from({ length: 100 }, (_, i) => `export const line${i} = ${i + 1};`).join("\n") + "\n");
+  execSync("git add large-file.ts", { cwd: repoDir, stdio: "pipe" });
+  // diff更新を待つ（変更後のコンテンツが表示されるまで）
+  await expect(diffView).toContainText("line99 = 100");
+  // スクロール位置が維持されていることを確認（TOPに戻っていない）
+  const scrollAfter = await page.evaluate(() => window.scrollY);
+  expect(scrollAfter).toBeGreaterThan(0);
 });
 
 test("clicking a diff line opens the comment form, and submitting sends the comment", async ({

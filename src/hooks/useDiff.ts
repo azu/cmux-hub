@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useActionState, useTransition, startTransition } from "react";
+import { useEffect, useCallback, useActionState, useTransition, startTransition } from "react";
 import { api } from "../lib/api.ts";
 import { parseDiff, type ParsedDiff } from "../lib/diff-parser.ts";
 
@@ -11,15 +11,36 @@ type CommitViewState = {
   error: string | null;
 };
 
+type AutoDiffState = {
+  diff: ParsedDiff;
+  rawDiff: string;
+  base: string | null;
+  error: string | null;
+};
+
 const initialCommitView: CommitViewState = { diff: [], rawDiff: "", commit: null, error: null };
+const initialAutoDiff: AutoDiffState = { diff: [], rawDiff: "", base: null, error: null };
 
 export function useDiff() {
-  const [diff, setDiff] = useState<ParsedDiff>([]);
-  const [rawDiff, setRawDiff] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [base, setBase] = useState<string | null>(null);
-  const [isPending, startRefreshTransition] = useTransition();
+  const [autoDiff, dispatchAutoDiff, isAutoLoading] = useActionState(
+    async (_prev: AutoDiffState, _action: void): Promise<AutoDiffState> => {
+      try {
+        const result = await api.getAutoDiff();
+        return {
+          diff: result.files ?? parseDiff(result.diff),
+          rawDiff: result.diff,
+          base: result.base,
+          error: null,
+        };
+      } catch (e) {
+        return {
+          ..._prev,
+          error: e instanceof Error ? e.message : "Failed to fetch diff",
+        };
+      }
+    },
+    initialAutoDiff,
+  );
 
   const [commitView, dispatchCommitView, isCommitLoading] = useActionState(
     async (_prev: CommitViewState, action: SelectedCommit | null): Promise<CommitViewState> => {
@@ -44,22 +65,9 @@ export function useDiff() {
     initialCommitView,
   );
 
-  const fetchDiff = useCallback(async () => {
-    try {
-      setError(null);
-      startTransition(() => dispatchCommitView(null));
-      const result = await api.getAutoDiff();
-      startRefreshTransition(() => {
-        setRawDiff(result.diff);
-        setDiff(result.files ?? parseDiff(result.diff));
-        setBase(result.base);
-        setLoading(false);
-      });
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to fetch diff");
-      setLoading(false);
-    }
-  }, [dispatchCommitView]);
+  const fetchDiff = useCallback(() => {
+    startTransition(() => dispatchAutoDiff());
+  }, [dispatchAutoDiff]);
 
   const selectCommit = useCallback(
     (commit: SelectedCommit) => {
@@ -93,14 +101,14 @@ export function useDiff() {
   const isCommitSelected = commitView.commit !== null;
 
   return {
-    diff: isCommitSelected ? commitView.diff : diff,
-    rawDiff: isCommitSelected ? commitView.rawDiff : rawDiff,
-    loading: loading || isCommitLoading,
-    refreshing: isPending,
-    error: isCommitSelected ? commitView.error : error,
-    base,
+    diff: isCommitSelected ? commitView.diff : autoDiff.diff,
+    rawDiff: isCommitSelected ? commitView.rawDiff : autoDiff.rawDiff,
+    loading: isAutoLoading || isCommitLoading,
+    refreshing: isAutoLoading,
+    error: isCommitSelected ? commitView.error : autoDiff.error,
+    base: autoDiff.base,
     selectedCommit: commitView.commit,
-    hasUncommittedChanges: diff.length > 0,
+    hasUncommittedChanges: autoDiff.diff.length > 0,
     refresh: fetchDiff,
     selectCommit,
     clearCommit,
