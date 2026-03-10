@@ -47,7 +47,12 @@ describe("validateLaunchJson", () => {
       version: "0.0.1",
       configurations: [
         { name: "frontend", runtimeExecutable: "npm", runtimeArgs: ["run", "dev"], port: 3000 },
-        { name: "backend", runtimeExecutable: "bun", runtimeArgs: ["run", "server.ts"], port: 8080 },
+        {
+          name: "backend",
+          runtimeExecutable: "bun",
+          runtimeArgs: ["run", "server.ts"],
+          port: 8080,
+        },
       ],
     };
     const result = validateLaunchJson(data);
@@ -56,9 +61,7 @@ describe("validateLaunchJson", () => {
 
   test("defaults version when missing", () => {
     const data = {
-      configurations: [
-        { name: "app", runtimeExecutable: "bun", port: 3000 },
-      ],
+      configurations: [{ name: "app", runtimeExecutable: "bun", port: 3000 }],
     };
     const result = validateLaunchJson(data);
     expect(result.version).toBe("0.0.1");
@@ -139,7 +142,10 @@ describe("createLauncher", () => {
         {
           name: "echo-server",
           runtimeExecutable: "bun",
-          runtimeArgs: ["-e", `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('ok') })`],
+          runtimeArgs: [
+            "-e",
+            `Bun.serve({ port: ${port}, hostname: '127.0.0.1', fetch: () => new Response('ok') })`,
+          ],
           port,
         },
       ],

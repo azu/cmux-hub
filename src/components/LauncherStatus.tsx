@@ -1,12 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "./ui/button.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select.tsx";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select.tsx";
 import { api } from "../lib/api.ts";
 import type { LauncherServer } from "../hooks/useLauncher.ts";
 
@@ -52,7 +46,9 @@ export function LauncherStatus({ servers }: Props) {
             {servers.map((s) => (
               <SelectItem key={s.name} value={s.name}>
                 <span className="flex items-center gap-1.5">
-                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${STATUS_COLORS[s.status] ?? STATUS_COLORS.stopped}`} />
+                  <span
+                    className={`inline-block w-1.5 h-1.5 rounded-full ${STATUS_COLORS[s.status] ?? STATUS_COLORS.stopped}`}
+                  />
                   {s.name}
                 </span>
               </SelectItem>
@@ -61,7 +57,9 @@ export function LauncherStatus({ servers }: Props) {
         </Select>
       ) : (
         <span className="flex items-center gap-1.5 text-xs">
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${STATUS_COLORS[selected.status] ?? STATUS_COLORS.stopped}`} />
+          <span
+            className={`inline-block w-1.5 h-1.5 rounded-full ${STATUS_COLORS[selected.status] ?? STATUS_COLORS.stopped}`}
+          />
           {selected.name}
         </span>
       )}

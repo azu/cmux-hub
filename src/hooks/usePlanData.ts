@@ -8,7 +8,7 @@ export function usePlanData() {
   });
 
   return {
-    files: data?.found ? data.files ?? [] : [],
+    files: data?.found ? (data.files ?? []) : [],
     planPath: data?.path ?? null,
     loading,
     error: !loading && data && !data.found ? "Plan file not found" : error,

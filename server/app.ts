@@ -568,7 +568,8 @@ export function createAppConfig(deps: AppDeps) {
           const states = deps.launcher.getStates();
           const server = states.find((s) => s.name === body.name);
           if (!server) return errorResponse(`Server "${body.name}" not found`, 404);
-          if (server.status !== "running") return errorResponse(`Server "${body.name}" is not running`, 400);
+          if (server.status !== "running")
+            return errorResponse(`Server "${body.name}" is not running`, 400);
 
           const surfaceRef = await deps.openPreviewSplit(`http://127.0.0.1:${server.port}`);
           if (surfaceRef) {
@@ -597,7 +598,8 @@ export function createAppConfig(deps: AppDeps) {
           const states = deps.launcher.getStates();
           const server = states.find((s) => s.name === body.name);
           if (!server) return errorResponse(`Server "${body.name}" not found`, 404);
-          if (!server.surfaceRef) return errorResponse(`No preview surface for "${body.name}"`, 400);
+          if (!server.surfaceRef)
+            return errorResponse(`No preview surface for "${body.name}"`, 400);
 
           const script = generateInspectorScript(securityConfig.port);
           await deps.browserEval(server.surfaceRef, script);
@@ -635,7 +637,9 @@ export function createAppConfig(deps: AppDeps) {
           const elementDesc = [
             `Element: <${body.element.tagName}>`,
             `Selector: ${body.element.selector}`,
-            body.element.textContent ? `Text: "${body.element.textContent.substring(0, 100)}"` : null,
+            body.element.textContent
+              ? `Text: "${body.element.textContent.substring(0, 100)}"`
+              : null,
             `Page: ${body.url}`,
           ]
             .filter(Boolean)

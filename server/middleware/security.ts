@@ -47,19 +47,26 @@ const WRITE_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
  * Check Sec-Fetch-Site for write operations (CSRF protection).
  * Only allows same-origin requests for state-changing methods.
  */
-export function isValidSecFetchSite(secFetchSite: string | null, method: string, origin?: string | null): boolean {
+export function isValidSecFetchSite(
+  secFetchSite: string | null,
+  method: string,
+  origin?: string | null,
+): boolean {
   if (!WRITE_METHODS.has(method.toUpperCase())) return true;
 
   // If the header is missing, we can't verify - allow for non-browser clients
   if (!secFetchSite) return true;
 
-  if (secFetchSite === "same-origin" || secFetchSite === "same-site" || secFetchSite === "none") return true;
+  if (secFetchSite === "same-origin" || secFetchSite === "same-site" || secFetchSite === "none")
+    return true;
 
   // Allow cross-site requests from localhost origins (preview pages on different ports)
   if (secFetchSite === "cross-site" && origin) {
     try {
       const url = new URL(origin);
-      return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+      return (
+        url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]"
+      );
     } catch {
       return false;
     }
@@ -118,13 +125,20 @@ export function validateRequest(req: Request, config: SecurityConfig): Response 
 /**
  * Build CORS headers for preflight and regular responses.
  */
-export function corsHeaders(config: SecurityConfig, requestOrigin?: string | null): Record<string, string> {
+export function corsHeaders(
+  config: SecurityConfig,
+  requestOrigin?: string | null,
+): Record<string, string> {
   // If the request comes from a valid localhost origin, reflect it back
   let allowOrigin = `http://localhost:${config.port}`;
   if (requestOrigin) {
     try {
       const url = new URL(requestOrigin);
-      if (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]") {
+      if (
+        url.hostname === "localhost" ||
+        url.hostname === "127.0.0.1" ||
+        url.hostname === "[::1]"
+      ) {
         allowOrigin = requestOrigin;
       }
     } catch {

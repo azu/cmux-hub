@@ -34,7 +34,10 @@ type UseWSFetchResult<T> = {
   refetch: () => void;
 };
 
-export function useWSFetch<T>({ fetch: fetchFn, wsMessageType }: UseWSFetchOptions<T>): UseWSFetchResult<T> {
+export function useWSFetch<T>({
+  fetch: fetchFn,
+  wsMessageType,
+}: UseWSFetchOptions<T>): UseWSFetchResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +46,8 @@ export function useWSFetch<T>({ fetch: fetchFn, wsMessageType }: UseWSFetchOptio
   fetchRef.current = fetchFn;
 
   const refetch = useCallback(() => {
-    fetchRef.current()
+    fetchRef
+      .current()
       .then((result) => {
         startTransition(() => {
           setData(result);
@@ -62,7 +66,9 @@ export function useWSFetch<T>({ fetch: fetchFn, wsMessageType }: UseWSFetchOptio
   }, [refetch]);
 
   const types = wsMessageType
-    ? Array.isArray(wsMessageType) ? wsMessageType : [wsMessageType]
+    ? Array.isArray(wsMessageType)
+      ? wsMessageType
+      : [wsMessageType]
     : [];
 
   useEffect(() => {

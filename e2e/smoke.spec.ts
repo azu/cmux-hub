@@ -68,7 +68,9 @@ test("ファイル変更時にスクロール位置がリセットされない",
   const diffView = page.getByTestId("diff-view");
   await expect(diffView).toBeVisible();
   // large-file.ts が表示されていることを確認
-  await expect(diffView.getByTestId("diff-file").filter({ hasText: "large-file.ts" })).toBeVisible();
+  await expect(
+    diffView.getByTestId("diff-file").filter({ hasText: "large-file.ts" }),
+  ).toBeVisible();
   // ページ下部の要素までスクロール
   const lastFile = diffView.getByTestId("diff-file").last();
   await lastFile.scrollIntoViewIfNeeded();
@@ -77,7 +79,10 @@ test("ファイル変更時にスクロール位置がリセットされない",
   const scrollBefore = await page.evaluate(() => window.scrollY);
   expect(scrollBefore).toBeGreaterThan(0);
   // ファイルを変更してwatcherを発火させる
-  writeFileSync(join(repoDir, "large-file.ts"), Array.from({ length: 100 }, (_, i) => `export const line${i} = ${i + 1};`).join("\n") + "\n");
+  writeFileSync(
+    join(repoDir, "large-file.ts"),
+    Array.from({ length: 100 }, (_, i) => `export const line${i} = ${i + 1};`).join("\n") + "\n",
+  );
   execSync("git add large-file.ts", { cwd: repoDir, stdio: "pipe" });
   // diff更新を待つ（変更後のコンテンツが表示されるまで）
   await expect(diffView).toContainText("line99 = 100");
