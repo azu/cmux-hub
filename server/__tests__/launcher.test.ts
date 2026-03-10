@@ -290,7 +290,7 @@ describe("createLauncher", () => {
 describe("generateInspectorScript", () => {
   test("generates script with react-grab and cmux-hub plugin", async () => {
     const { generateInspectorScript } = await import("../inspector.ts");
-    const script = await generateInspectorScript(4567);
+    const script = generateInspectorScript(4567);
     expect(script).toContain("http://127.0.0.1:4567");
     expect(script).toContain("__cmuxHubInspector");
     expect(script).toContain("__REACT_GRAB_MODULE__");

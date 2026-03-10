@@ -4,20 +4,10 @@
  * On copy (Cmd+C), sends element context to cmux-hub server via fetch POST.
  */
 
-import { resolve } from "node:path";
+// Static import so the script is embedded in compiled binaries
+import reactGrabScript from "../node_modules/react-grab/dist/index.global.js" with { type: "text" };
 
-let cachedReactGrabScript: string | null = null;
-
-async function loadReactGrabScript(): Promise<string> {
-  if (cachedReactGrabScript) return cachedReactGrabScript;
-  const scriptPath = resolve(import.meta.dir, "../node_modules/react-grab/dist/index.global.js");
-  cachedReactGrabScript = await Bun.file(scriptPath).text();
-  return cachedReactGrabScript;
-}
-
-export async function generateInspectorScript(cmuxHubPort: number): Promise<string> {
-  const reactGrabScript = await loadReactGrabScript();
-
+export function generateInspectorScript(cmuxHubPort: number): string {
   const pluginScript = `(function() {
   if (window.__cmuxHubInspector) return;
   window.__cmuxHubInspector = true;

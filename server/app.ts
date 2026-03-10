@@ -576,7 +576,7 @@ export function createAppConfig(deps: AppDeps) {
             deps.launcher.setSurfaceRef(body.name, surfaceRef);
             // Auto-inject inspector into the new preview
             if (deps.browserEval) {
-              const script = await generateInspectorScript(securityConfig.port);
+              const script = generateInspectorScript(securityConfig.port);
               await deps.browserEval(surfaceRef, script).catch(() => {});
             }
           }
@@ -601,7 +601,7 @@ export function createAppConfig(deps: AppDeps) {
           if (!server.surfaceRef)
             return errorResponse(`No preview surface for "${body.name}"`, 400);
 
-          const script = await generateInspectorScript(securityConfig.port);
+          const script = generateInspectorScript(securityConfig.port);
           await deps.browserEval(server.surfaceRef, script);
           return jsonResponse({ ok: true });
         } catch (e) {
