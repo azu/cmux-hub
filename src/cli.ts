@@ -209,10 +209,10 @@ if (g.__cmuxHubLauncher) {
 // Helper to open a cmux browser split for preview
 async function openPreviewSplit(url: string): Promise<string | null> {
   try {
-    const proc = Bun.spawn(
-      [CMUX_BIN, "--json", "browser", "open-split", url],
-      { stdout: "pipe", stderr: "pipe" },
-    );
+    const proc = Bun.spawn([CMUX_BIN, "--json", "browser", "open-split", url], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const output = await new Response(proc.stdout).text();
     const exitCode = await proc.exited;
     if (exitCode !== 0) return null;
@@ -226,10 +226,10 @@ async function openPreviewSplit(url: string): Promise<string | null> {
 // Helper to eval JS in a cmux browser surface
 async function browserEval(surfaceRef: string, script: string): Promise<string | null> {
   try {
-    const proc = Bun.spawn(
-      [CMUX_BIN, "browser", surfaceRef, "eval", script],
-      { stdout: "pipe", stderr: "pipe" },
-    );
+    const proc = Bun.spawn([CMUX_BIN, "browser", surfaceRef, "eval", script], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const output = await new Response(proc.stdout).text();
     const exitCode = await proc.exited;
     if (exitCode !== 0) return null;
@@ -259,7 +259,6 @@ const app = createAppConfig(appDeps);
 // Wire up launcher onChange to broadcast via WebSocket
 if (launcher) {
   // Replace the placeholder onChange with the real one
-  const originalLauncher = launcher;
   const launchJson = await loadLaunchJson(CWD);
   if (launchJson) {
     const newLauncher = createLauncher({

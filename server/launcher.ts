@@ -178,8 +178,8 @@ export function createLauncher(opts: {
 
     // Build env
     const env: Record<string, string> = {
-      ...process.env as Record<string, string>,
-      ...(config.env ?? {}),
+      ...(process.env as Record<string, string>),
+      ...config.env,
       PORT: String(actualPort),
     };
 
@@ -251,9 +251,7 @@ export function createLauncher(opts: {
       if (name) {
         await startOne(name);
       } else {
-        await Promise.all(
-          Array.from(servers.keys()).map((n) => startOne(n)),
-        );
+        await Promise.all(Array.from(servers.keys()).map((n) => startOne(n)));
       }
     },
 
@@ -261,9 +259,7 @@ export function createLauncher(opts: {
       if (name) {
         await stopOne(name);
       } else {
-        await Promise.all(
-          Array.from(servers.keys()).map((n) => stopOne(n)),
-        );
+        await Promise.all(Array.from(servers.keys()).map((n) => stopOne(n)));
       }
     },
 
