@@ -576,7 +576,7 @@ export function createAppConfig(deps: AppDeps) {
             deps.launcher.setSurfaceRef(body.name, surfaceRef);
             // Auto-inject inspector into the new preview
             if (deps.browserEval) {
-              const script = generateInspectorScript(securityConfig.port);
+              const script = await generateInspectorScript(securityConfig.port);
               await deps.browserEval(surfaceRef, script).catch(() => {});
             }
           }
@@ -601,7 +601,7 @@ export function createAppConfig(deps: AppDeps) {
           if (!server.surfaceRef)
             return errorResponse(`No preview surface for "${body.name}"`, 400);
 
-          const script = generateInspectorScript(securityConfig.port);
+          const script = await generateInspectorScript(securityConfig.port);
           await deps.browserEval(server.surfaceRef, script);
           return jsonResponse({ ok: true });
         } catch (e) {
@@ -634,18 +634,23 @@ export function createAppConfig(deps: AppDeps) {
           };
 
           // Format the comment for Claude Code
-          const elementDesc = [
-            `Element: <${body.element.tagName}>`,
-            `Selector: ${body.element.selector}`,
-            body.element.textContent
-              ? `Text: "${body.element.textContent.substring(0, 100)}"`
-              : null,
-            `Page: ${body.url}`,
-          ]
-            .filter(Boolean)
-            .join("\n");
-
-          const text = `[Preview Comment]\n${elementDesc}\n\nComment: ${body.comment}\n`;
+          // When coming from react-grab, element info is empty and comment contains full context
+          let text: string;
+          if (body.element.tagName) {
+            const elementDesc = [
+              `Element: <${body.element.tagName}>`,
+              `Selector: ${body.element.selector}`,
+              body.element.textContent
+                ? `Text: "${body.element.textContent.substring(0, 100)}"`
+                : null,
+              `Page: ${body.url}`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+            text = `[Preview Comment]\n${elementDesc}\n\nComment: ${body.comment}\n`;
+          } else {
+            text = `[Preview Comment]\nPage: ${body.url}\n\n${body.comment}\n`;
+          }
 
           // Try to capture screenshot if requested
           if (body.includeScreenshot && deps.launcher && deps.browserEval) {
