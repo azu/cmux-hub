@@ -1,7 +1,7 @@
 {
   "name": "cmux-hub",
   "description": "Browser-based diff viewer for cmux. Auto-launches on session start.",
-  "version": "1.3.12",
+  "version": "1.3.13",
   "author": {
     "name": "azu"
   },
