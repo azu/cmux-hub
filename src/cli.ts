@@ -258,20 +258,9 @@ const app = createAppConfig(appDeps);
 
 // Wire up launcher onChange to broadcast via WebSocket
 if (launcher) {
-  // Replace the placeholder onChange with the real one
-  const launchJson = await loadLaunchJson(CWD);
-  if (launchJson) {
-    const newLauncher = createLauncher({
-      cwd: CWD,
-      launchJson,
-      onChange: (states) => {
-        app.broadcastLauncherUpdate(states);
-      },
-    });
-    appDeps.launcher = newLauncher;
-    g.__cmuxHubLauncher = newLauncher;
-    launcher = newLauncher;
-  }
+  launcher.setOnChange((states) => {
+    app.broadcastLauncherUpdate(states);
+  });
 }
 
 // Detect dev mode: compiled binary sets Bun.main differently
@@ -296,9 +285,9 @@ app.setServer(server);
 app.startWatcher();
 
 // Cleanup on termination signals (e.g. SIGHUP from parent shell exit)
-function cleanup() {
-  logger.info("cmux-hub: Signal received, shutting down.");
-  launcher?.cleanup();
+async function cleanup() {
+  logger.info("cmux-hub: shutting down...");
+  await launcher?.cleanup();
   watcher.stop();
   server.stop();
   process.exit(0);
@@ -362,7 +351,7 @@ async function waitForBrowserClose(surfaceRef: string) {
     await Bun.sleep(1000);
   }
   logger.info("Browser closed, shutting down.");
-  process.exit(0);
+  await cleanup();
 }
 
 // Dev mode: skip browser split, just log the URL

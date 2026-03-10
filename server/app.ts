@@ -59,6 +59,29 @@ export function createAppConfig(deps: AppDeps) {
     return surfaceId ?? defaultSurfaceId;
   }
 
+  // Inspector re-injection interval (handles HMR/navigation in preview pages)
+  let inspectorTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startInspectorReinjection() {
+    if (inspectorTimer) return;
+    inspectorTimer = setInterval(async () => {
+      if (!deps.launcher || !deps.browserEval) return;
+      const script = generateInspectorScript(securityConfig.port);
+      for (const server of deps.launcher.getStates()) {
+        if (server.status === "running" && server.surfaceRef) {
+          await deps.browserEval(server.surfaceRef, script).catch(() => {});
+        }
+      }
+    }, 3000);
+  }
+
+  function stopInspectorReinjection() {
+    if (inspectorTimer) {
+      clearInterval(inspectorTimer);
+      inspectorTimer = null;
+    }
+  }
+
   // Map<ws, lastPongTimestamp>
   const wsClients = new Map<ServerWebSocket<unknown>, number>();
   let planWatcherInstance: ReturnType<typeof createPlanWatcher> | null = null;
@@ -574,10 +597,11 @@ export function createAppConfig(deps: AppDeps) {
           const surfaceRef = await deps.openPreviewSplit(`http://127.0.0.1:${server.port}`);
           if (surfaceRef) {
             deps.launcher.setSurfaceRef(body.name, surfaceRef);
-            // Auto-inject inspector into the new preview
+            // Auto-inject inspector and start periodic re-injection for HMR/navigation
             if (deps.browserEval) {
               const script = generateInspectorScript(securityConfig.port);
               await deps.browserEval(surfaceRef, script).catch(() => {});
+              startInspectorReinjection();
             }
           }
           return jsonResponse({ ok: true, surfaceRef });
@@ -846,6 +870,7 @@ export function createAppConfig(deps: AppDeps) {
       deps.watcher?.stop();
       planWatcherInstance?.stop();
       planWatcherInstance = null;
+      stopInspectorReinjection();
     },
   };
 }

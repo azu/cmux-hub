@@ -42,7 +42,8 @@ export type Launcher = {
   restart(name?: string): Promise<void>;
   getStates(): ServerState[];
   setSurfaceRef(name: string, ref: string): void;
-  cleanup(): void;
+  setOnChange(fn: (states: ServerState[]) => void): void;
+  cleanup(): Promise<void>;
 };
 
 export async function loadLaunchJson(cwd: string): Promise<LaunchJson | null> {
@@ -122,7 +123,8 @@ export function createLauncher(opts: {
   launchJson: LaunchJson;
   onChange: (states: ServerState[]) => void;
 }): Launcher {
-  const { cwd, launchJson, onChange } = opts;
+  const { cwd, launchJson } = opts;
+  let onChange = opts.onChange;
   const servers = new Map<string, ManagedServer>();
 
   // Initialize server states
@@ -279,14 +281,16 @@ export function createLauncher(opts: {
       updateState(name, { surfaceRef: ref });
     },
 
-    cleanup() {
-      for (const [, server] of servers) {
-        if (server.proc) {
-          server.proc.kill("SIGTERM");
-          server.proc = undefined;
-        }
-        server.state.status = "stopped";
+    setOnChange(fn: (states: ServerState[]) => void) {
+      onChange = fn;
+    },
+
+    async cleanup() {
+      const promises: Promise<void>[] = [];
+      for (const [name] of servers) {
+        promises.push(stopOne(name));
       }
+      await Promise.all(promises);
     },
   };
 }
