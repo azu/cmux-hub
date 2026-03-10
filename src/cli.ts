@@ -324,13 +324,6 @@ async function waitForReady() {
 }
 await waitForReady();
 
-// Start dev servers from launch.json (preview is opened via UI)
-async function startLauncherServers() {
-  if (!launcher) return;
-  logger.info("Starting dev servers from launch.json...");
-  await launcher.start();
-}
-
 // Open browser split in cmux
 async function openBrowserSplit(): Promise<string | null> {
   try {
@@ -375,8 +368,6 @@ async function waitForBrowserClose(surfaceRef: string) {
 // Dev mode: skip browser split, just log the URL
 if (isDev) {
   logger.info("Dev mode: open http://127.0.0.1:" + server.port);
-  // Start launcher even in dev mode
-  startLauncherServers();
 } else {
   // bun --hot re-executes top-level code on every change.
   // Store the browser surface ref in globalThis to avoid opening a new window each time.
@@ -392,11 +383,9 @@ if (isDev) {
     if (browserSurface) {
       (globalThis as Record<string, unknown>).__cmuxHubBrowserSurface = browserSurface;
       appDeps.browserSurfaceId = browserSurface;
-      startLauncherServers();
       waitForBrowserClose(browserSurface);
     } else {
       logger.info("cmux browser split not available, open http://127.0.0.1:" + server.port);
-      startLauncherServers();
     }
   }
 }
