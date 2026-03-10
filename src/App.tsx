@@ -3,11 +3,13 @@ import { DiffView } from "./components/DiffView.tsx";
 import { Toolbar } from "./components/Toolbar.tsx";
 import { CIStatus } from "./components/CIStatus.tsx";
 import { PlanView } from "./components/PlanView.tsx";
+import { LauncherStatus } from "./components/LauncherStatus.tsx";
 import { useDiff } from "./hooks/useDiff.ts";
 import { useWebSocket } from "./hooks/useWebSocket.ts";
 import { useHashRoute } from "./hooks/useHashRoute.ts";
 import { useStatus } from "./hooks/useStatus.ts";
 import { usePRData } from "./hooks/usePRData.ts";
+import { useLauncher } from "./hooks/useLauncher.ts";
 import "./index.css";
 
 export default function App() {
@@ -25,6 +27,7 @@ export default function App() {
   const { route, navigate } = useHashRoute();
   const { branch, hasTerminal, actions, hasPlan } = useStatus();
   const { prUrl, prTitle, prState, checks, prComments } = usePRData();
+  const { hasLauncher, servers } = useLauncher();
 
   // Establish WebSocket connection (individual hooks subscribe via ws-message events)
   useWebSocket(() => {});
@@ -47,6 +50,7 @@ export default function App() {
         onShowCommitList={() => navigate("/commits")}
         onShowPlan={hasPlan ? () => navigate("/plan") : undefined}
       />
+      {hasLauncher && servers.length > 0 && <LauncherStatus servers={servers} />}
       <div
         className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
       >

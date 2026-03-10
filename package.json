@@ -7,7 +7,7 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/cli.ts -p 4567 --actions .claude/cmux-hub.json",
+    "dev": "bun --hot src/cli.ts -p 4567 --actions .claude/cmux-hub.json .",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun run build.ts",
     "build:compile": "bun run build-compile.ts",

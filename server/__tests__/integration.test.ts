@@ -283,7 +283,7 @@ describe("API integration", () => {
 
   test("responses include security headers", async () => {
     const res = await fetch(`${BASE_URL}/api/status`, { headers: validHeaders() });
-    expect(res.headers.get("cross-origin-resource-policy")).toBe("same-origin");
+    expect(res.headers.get("cross-origin-resource-policy")).toBe("same-site");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 

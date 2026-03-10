@@ -130,4 +130,47 @@ export const api = {
       body: JSON.stringify({ id, variables, surfaceId }),
     });
   },
+
+  getLauncherStatus() {
+    return fetchJSON<{
+      servers: Array<{
+        name: string;
+        status: string;
+        port: number;
+        configPort: number;
+        error?: string;
+        surfaceRef?: string;
+      }>;
+      hasLauncher: boolean;
+    }>("/api/launcher/status");
+  },
+
+  launcherStart(name?: string) {
+    return fetchJSON<{ ok: boolean }>("/api/launcher/start", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  launcherStop(name?: string) {
+    return fetchJSON<{ ok: boolean }>("/api/launcher/stop", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  launcherRestart(name?: string) {
+    return fetchJSON<{ ok: boolean }>("/api/launcher/restart", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  launcherPreview(name: string) {
+    return fetchJSON<{ ok: boolean; surfaceRef?: string }>("/api/launcher/preview", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+  },
+
 };
