@@ -182,9 +182,11 @@ const cmux = createCmuxService(connector);
 const github = createGitHubService(defaultCommandRunner, CWD);
 const watcher = createFileWatcher(defaultWatcherFactory, CWD);
 
-// Load launch.json if present
-let launcher: Launcher | undefined;
+// Load launch.json if present.
+// Use globalThis cache for bun --hot; launcher implements AsyncDisposable
+// so cleanup() is called via Symbol.asyncDispose on normal exit.
 const g = globalThis as Record<string, unknown>;
+let launcher: Launcher | undefined;
 if (g.__cmuxHubLauncher) {
   launcher = g.__cmuxHubLauncher as Launcher;
   logger.debug("reusing existing launcher from globalThis");
@@ -193,11 +195,10 @@ if (g.__cmuxHubLauncher) {
     const launchJson = await loadLaunchJson(CWD);
     if (launchJson) {
       logger.info("Found launch.json with", launchJson.configurations.length, "configurations");
-      // onChange will be wired up after app is created
       launcher = createLauncher({
         cwd: CWD,
         launchJson,
-        onChange: () => {}, // placeholder, will be replaced
+        onChange: () => {},
       });
       g.__cmuxHubLauncher = launcher;
     }
@@ -287,7 +288,8 @@ app.startWatcher();
 // Cleanup on termination signals (e.g. SIGHUP from parent shell exit)
 async function cleanup() {
   logger.info("cmux-hub: shutting down...");
-  await launcher?.cleanup();
+  // AsyncDisposable — single path for all shutdown scenarios
+  await launcher?.[Symbol.asyncDispose]();
   watcher.stop();
   server.stop();
   process.exit(0);
