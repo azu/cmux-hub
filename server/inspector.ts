@@ -5,6 +5,7 @@
  */
 
 // Static import so the script is embedded in compiled binaries
+// @ts-expect-error -- text import has no type declaration
 import reactGrabScript from "../node_modules/react-grab/dist/index.global.js" with { type: "text" };
 
 export function generateInspectorScript(cmuxHubPort: number): string {
