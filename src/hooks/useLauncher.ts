@@ -1,14 +1,8 @@
+import type { ServerState } from "../../server/launcher.ts";
 import { api } from "../lib/api.ts";
 import { useWSFetch } from "./useWSFetch.ts";
 
-export type LauncherServer = {
-  name: string;
-  status: string;
-  port: number;
-  configPort: number;
-  error?: string;
-  surfaceRef?: string;
-};
+export type LauncherServer = ServerState;
 
 export function useLauncher() {
   const { data } = useWSFetch({

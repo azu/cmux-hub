@@ -1,3 +1,5 @@
+import type { ServerState } from "../../server/launcher.ts";
+
 const BASE_URL = "";
 
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
@@ -132,17 +134,7 @@ export const api = {
   },
 
   getLauncherStatus() {
-    return fetchJSON<{
-      servers: Array<{
-        name: string;
-        status: string;
-        port: number;
-        configPort: number;
-        error?: string;
-        surfaceRef?: string;
-      }>;
-      hasLauncher: boolean;
-    }>("/api/launcher/status");
+    return fetchJSON<{ servers: ServerState[]; hasLauncher: boolean }>("/api/launcher/status");
   },
 
   launcherStart(name?: string) {
