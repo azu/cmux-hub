@@ -36,7 +36,7 @@ type ManagedServer = {
   proc?: ReturnType<typeof Bun.spawn>;
 };
 
-export type Launcher = {
+export type Launcher = AsyncDisposable & {
   start(name?: string): Promise<void>;
   stop(name?: string): Promise<void>;
   restart(name?: string): Promise<void>;
@@ -116,6 +116,26 @@ async function findFreePort(): Promise<number> {
   const port = server.port;
   server.stop();
   return port;
+}
+
+/**
+ * Kill a managed server's process and wait for exit.
+ * Centralises proc cleanup so it cannot be forgotten.
+ */
+async function killProc(server: ManagedServer): Promise<void> {
+  const { proc } = server;
+  if (!proc) return;
+
+  proc.kill("SIGTERM");
+  const exited = await Promise.race([
+    proc.exited.then(() => true),
+    Bun.sleep(5000).then(() => false),
+  ]);
+  if (!exited) {
+    proc.kill("SIGKILL");
+    await proc.exited;
+  }
+  server.proc = undefined;
 }
 
 export function createLauncher(opts: {
@@ -221,8 +241,7 @@ export function createLauncher(opts: {
         status: "error",
         error: `Port ${actualPort} not ready after 60s`,
       });
-      proc.kill();
-      server.proc = undefined;
+      await killProc(server);
     }
   }
 
@@ -235,17 +254,11 @@ export function createLauncher(opts: {
     }
 
     updateState(name, { status: "stopped" });
-    server.proc.kill("SIGTERM");
+    await killProc(server);
+  }
 
-    // Wait up to 5s for graceful exit
-    const exited = await Promise.race([
-      server.proc.exited.then(() => true),
-      Bun.sleep(5000).then(() => false),
-    ]);
-    if (!exited && server.proc) {
-      server.proc.kill("SIGKILL");
-    }
-    server.proc = undefined;
+  async function cleanupAll() {
+    await Promise.all(Array.from(servers.keys()).map((n) => stopOne(n)));
   }
 
   return {
@@ -285,12 +298,10 @@ export function createLauncher(opts: {
       onChange = fn;
     },
 
-    async cleanup() {
-      const promises: Promise<void>[] = [];
-      for (const [name] of servers) {
-        promises.push(stopOne(name));
-      }
-      await Promise.all(promises);
+    cleanup: cleanupAll,
+
+    async [Symbol.asyncDispose]() {
+      await cleanupAll();
     },
   };
 }
