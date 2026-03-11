@@ -16,6 +16,8 @@ import type { MenuItem } from "./actions.ts";
 import { buildCommandWithEnv, findAction } from "./actions.ts";
 import { findPlanFile } from "./plan.ts";
 import { createPlanWatcher } from "./plan-watcher.ts";
+import type { Launcher, ServerState } from "./launcher.ts";
+import { generateInspectorScript } from "./inspector.ts";
 
 type AppDeps = {
   port: number;
@@ -31,6 +33,12 @@ type AppDeps = {
   autoShutdownMs?: number;
   /** Menu actions for the toolbar */
   actions?: MenuItem[];
+  /** Launcher for managing dev servers from launch.json */
+  launcher?: Launcher;
+  /** Callback to open a cmux browser split for preview */
+  openPreviewSplit?: (url: string) => Promise<string | null>;
+  /** Callback to eval JS in a cmux browser surface */
+  browserEval?: (surfaceRef: string, script: string) => Promise<string | null>;
   watcher?: {
     start(): void;
     onChanged(cb: (event: { hasRefChange: boolean }) => void): void;
@@ -49,6 +57,29 @@ export function createAppConfig(deps: AppDeps) {
 
   function resolveSurfaceId(surfaceId?: string): string | undefined {
     return surfaceId ?? defaultSurfaceId;
+  }
+
+  // Inspector re-injection interval (handles HMR/navigation in preview pages)
+  let inspectorTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startInspectorReinjection() {
+    if (inspectorTimer) return;
+    inspectorTimer = setInterval(async () => {
+      if (!deps.launcher || !deps.browserEval) return;
+      const script = generateInspectorScript(securityConfig.port);
+      for (const server of deps.launcher.getStates()) {
+        if (server.status === "running" && server.surfaceRef) {
+          await deps.browserEval(server.surfaceRef, script).catch(() => {});
+        }
+      }
+    }, 3000);
+  }
+
+  function stopInspectorReinjection() {
+    if (inspectorTimer) {
+      clearInterval(inspectorTimer);
+      inspectorTimer = null;
+    }
   }
 
   // Map<ws, lastPongTimestamp>
@@ -139,20 +170,20 @@ export function createAppConfig(deps: AppDeps) {
     pollTimer = setInterval(pollGitHub, 10000);
   }
 
-  function addSecurityHeaders(response: Response): Response {
-    const headers = { ...securityHeaders(), ...corsHeaders(securityConfig) };
+  function addSecurityHeaders(response: Response, requestOrigin?: string | null): Response {
+    const headers = { ...securityHeaders(), ...corsHeaders(securityConfig, requestOrigin) };
     for (const [key, value] of Object.entries(headers)) {
       response.headers.set(key, value);
     }
     return response;
   }
 
-  function jsonResponse(data: unknown, status = 200): Response {
-    return addSecurityHeaders(Response.json(data, { status }));
+  function jsonResponse(data: unknown, status = 200, req?: Request): Response {
+    return addSecurityHeaders(Response.json(data, { status }), req?.headers.get("origin"));
   }
 
-  function errorResponse(message: string, status = 500): Response {
-    return jsonResponse({ error: message }, status);
+  function errorResponse(message: string, status = 500, req?: Request): Response {
+    return jsonResponse({ error: message }, status, req);
   }
 
   const apiRoutes: Record<string, unknown> = {
@@ -298,6 +329,7 @@ export function createAppConfig(deps: AppDeps) {
             terminalSurface: defaultSurfaceId ?? null,
             actions: deps.actions ?? [],
             hasPlan: planPath !== null,
+            hasLauncher: !!deps.launcher,
           });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -494,6 +526,192 @@ export function createAppConfig(deps: AppDeps) {
       },
     },
 
+    "/api/launcher/status": {
+      GET(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        const states = deps.launcher?.getStates() ?? [];
+        return jsonResponse({ servers: states, hasLauncher: !!deps.launcher });
+      },
+    },
+
+    "/api/launcher/start": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.launcher) return errorResponse("No launcher configured", 404);
+        try {
+          const body = (await req.json()) as { name?: string };
+          await deps.launcher.start(body.name);
+          return jsonResponse({ ok: true });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/launcher/stop": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.launcher) return errorResponse("No launcher configured", 404);
+        try {
+          const body = (await req.json()) as { name?: string };
+          await deps.launcher.stop(body.name);
+          return jsonResponse({ ok: true });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/launcher/restart": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.launcher) return errorResponse("No launcher configured", 404);
+        try {
+          const body = (await req.json()) as { name?: string };
+          await deps.launcher.restart(body.name);
+          return jsonResponse({ ok: true });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/launcher/preview": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.launcher) return errorResponse("No launcher configured", 404);
+        if (!deps.openPreviewSplit) return errorResponse("Preview not available", 501);
+        try {
+          const body = (await req.json()) as { name: string };
+          const states = deps.launcher.getStates();
+          const server = states.find((s) => s.name === body.name);
+          if (!server) return errorResponse(`Server "${body.name}" not found`, 404);
+          if (server.status !== "running")
+            return errorResponse(`Server "${body.name}" is not running`, 400);
+
+          const surfaceRef = await deps.openPreviewSplit(`http://127.0.0.1:${server.port}`);
+          if (surfaceRef) {
+            deps.launcher.setSurfaceRef(body.name, surfaceRef);
+            // Auto-inject inspector and start periodic re-injection for HMR/navigation
+            if (deps.browserEval) {
+              const script = generateInspectorScript(securityConfig.port);
+              await deps.browserEval(surfaceRef, script).catch(() => {});
+              startInspectorReinjection();
+            }
+          }
+          return jsonResponse({ ok: true, surfaceRef });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/launcher/inject": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.launcher) return errorResponse("No launcher configured", 404);
+        if (!deps.browserEval) return errorResponse("Browser eval not available", 501);
+        try {
+          const body = (await req.json()) as { name: string };
+          const states = deps.launcher.getStates();
+          const server = states.find((s) => s.name === body.name);
+          if (!server) return errorResponse(`Server "${body.name}" not found`, 404);
+          if (!server.surfaceRef)
+            return errorResponse(`No preview surface for "${body.name}"`, 400);
+
+          const script = generateInspectorScript(securityConfig.port);
+          await deps.browserEval(server.surfaceRef, script);
+          return jsonResponse({ ok: true });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/preview-comment": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) {
+          // Add CORS headers to error response so browser can read the error
+          addSecurityHeaders(secErr, req.headers.get("origin"));
+          return secErr;
+        }
+        try {
+          const body = (await req.json()) as {
+            element: {
+              selector: string;
+              tagName: string;
+              textContent: string;
+              className: string;
+              attributes: Record<string, string>;
+              boundingBox: { x: number; y: number; width: number; height: number };
+            };
+            comment: string;
+            url: string;
+            includeScreenshot?: boolean;
+          };
+
+          // Format the comment for Claude Code
+          // When coming from react-grab, element info is empty and comment contains full context
+          let text: string;
+          if (body.element.tagName) {
+            const elementDesc = [
+              `Element: <${body.element.tagName}>`,
+              `Selector: ${body.element.selector}`,
+              body.element.textContent
+                ? `Text: "${body.element.textContent.substring(0, 100)}"`
+                : null,
+              `Page: ${body.url}`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+            text = `[Preview Comment]\n${elementDesc}\n\nComment: ${body.comment}\n`;
+          } else {
+            text = `[Preview Comment]\nPage: ${body.url}\n\n${body.comment}\n`;
+          }
+
+          // Try to capture screenshot if requested
+          if (body.includeScreenshot && deps.launcher && deps.browserEval) {
+            // Find the server that matches this URL
+            const states = deps.launcher.getStates();
+            const matchingServer = states.find(
+              (s) => s.surfaceRef && body.url.includes(`:${s.port}`),
+            );
+            if (matchingServer?.surfaceRef) {
+              try {
+                // Use cmux browser snapshot for DOM snapshot
+                const CMUX_BIN = "/Applications/cmux.app/Contents/Resources/bin/cmux";
+                const proc = Bun.spawn(
+                  [CMUX_BIN, "browser", matchingServer.surfaceRef, "snapshot", "--compact"],
+                  { stdout: "pipe", stderr: "pipe" },
+                );
+                const snapshot = await new Response(proc.stdout).text();
+                await proc.exited;
+                if (snapshot.trim()) {
+                  const snapshotText = `\n[DOM Snapshot]\n${snapshot.substring(0, 2000)}\n`;
+                  await cmux.sendText(text + snapshotText, resolveSurfaceId());
+                  return jsonResponse({ ok: true }, 200, req);
+                }
+              } catch {
+                // Fall through to send without snapshot
+              }
+            }
+          }
+
+          await cmux.sendText(text, resolveSurfaceId());
+          return jsonResponse({ ok: true }, 200, req);
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error", 500, req);
+        }
+      },
+    },
+
     "/api/pr": {
       GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
@@ -576,12 +794,13 @@ export function createAppConfig(deps: AppDeps) {
 
     fetch(req: Request) {
       const url = new URL(req.url);
+      const requestOrigin = req.headers.get("origin");
 
       // Handle CORS preflight
       if (req.method === "OPTIONS") {
         return new Response(null, {
           status: 204,
-          headers: corsHeaders(securityConfig),
+          headers: corsHeaders(securityConfig, requestOrigin),
         });
       }
 
@@ -633,6 +852,13 @@ export function createAppConfig(deps: AppDeps) {
       planWatcherInstance.start();
     },
 
+    broadcastLauncherUpdate(states: ServerState[]) {
+      const message = JSON.stringify({ type: "launcher-updated", data: { servers: states } });
+      for (const ws of wsClients.keys()) {
+        ws.send(message);
+      }
+    },
+
     /** Fetch GitHub data once (for tests or initial load) */
     pollGitHub,
 
@@ -644,6 +870,7 @@ export function createAppConfig(deps: AppDeps) {
       deps.watcher?.stop();
       planWatcherInstance?.stop();
       planWatcherInstance = null;
+      stopInspectorReinjection();
     },
   };
 }

@@ -1,0 +1,13 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sample-app",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "examples/sample-server.ts"],
+      "port": 3456,
+      "cwd": ".",
+      "autoPort": true
+    }
+  ]
+}

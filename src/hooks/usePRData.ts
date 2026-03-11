@@ -37,10 +37,7 @@ async function fetchPRData(): Promise<PRData> {
   if (!prData?.number) {
     return { pr: prData, checks: [], comments: [] };
   }
-  const [ci, commentsRes] = await Promise.all([
-    api.getCI(),
-    api.getPRComments(),
-  ]);
+  const [ci, commentsRes] = await Promise.all([api.getCI(), api.getPRComments()]);
   return {
     pr: prData,
     checks: (ci.checks as Check[]) ?? [],

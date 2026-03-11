@@ -10,6 +10,8 @@ import { createAppConfig } from "../server/app.ts";
 import { logger, enableDebug } from "../server/logger.ts";
 import { loadActions, DEFAULT_ACTIONS } from "../server/actions.ts";
 import type { MenuItem } from "../server/actions.ts";
+import { loadLaunchJson, createLauncher } from "../server/launcher.ts";
+import type { Launcher } from "../server/launcher.ts";
 import pkg from "../package.json" with { type: "json" };
 
 const CMUX_BIN = "/Applications/cmux.app/Contents/Resources/bin/cmux";
@@ -180,6 +182,64 @@ const cmux = createCmuxService(connector);
 const github = createGitHubService(defaultCommandRunner, CWD);
 const watcher = createFileWatcher(defaultWatcherFactory, CWD);
 
+// Load launch.json if present.
+// Use globalThis cache for bun --hot; launcher implements AsyncDisposable
+// so cleanup() is called via Symbol.asyncDispose on normal exit.
+const g = globalThis as Record<string, unknown>;
+let launcher: Launcher | undefined;
+if (g.__cmuxHubLauncher) {
+  launcher = g.__cmuxHubLauncher as Launcher;
+  logger.debug("reusing existing launcher from globalThis");
+} else {
+  try {
+    const launchJson = await loadLaunchJson(CWD);
+    if (launchJson) {
+      logger.info("Found launch.json with", launchJson.configurations.length, "configurations");
+      launcher = createLauncher({
+        cwd: CWD,
+        launchJson,
+        onChange: () => {},
+      });
+      g.__cmuxHubLauncher = launcher;
+    }
+  } catch (e) {
+    logger.info("Failed to load launch.json:", e instanceof Error ? e.message : e);
+  }
+}
+
+// Helper to open a cmux browser split for preview
+async function openPreviewSplit(url: string): Promise<string | null> {
+  try {
+    const proc = Bun.spawn([CMUX_BIN, "--json", "browser", "open-split", url], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) return null;
+    const json = JSON.parse(output) as { surface_ref?: string };
+    return json.surface_ref ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper to eval JS in a cmux browser surface
+async function browserEval(surfaceRef: string, script: string): Promise<string | null> {
+  try {
+    const proc = Bun.spawn([CMUX_BIN, "browser", surfaceRef, "eval", script], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const output = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) return null;
+    return output;
+  } catch {
+    return null;
+  }
+}
+
 const appDeps: Parameters<typeof createAppConfig>[0] = {
   port: PORT,
   git,
@@ -191,8 +251,18 @@ const appDeps: Parameters<typeof createAppConfig>[0] = {
   // CLI mode: waitForBrowserClose handles shutdown via cmux surface polling
   autoShutdownMs: undefined,
   actions,
+  launcher,
+  openPreviewSplit,
+  browserEval,
 };
 const app = createAppConfig(appDeps);
+
+// Wire up launcher onChange to broadcast via WebSocket
+if (launcher) {
+  launcher.setOnChange((states) => {
+    app.broadcastLauncherUpdate(states);
+  });
+}
 
 // Detect dev mode: compiled binary sets Bun.main differently
 const isDev = !process.execPath.includes("cmux-hub");
@@ -216,8 +286,10 @@ app.setServer(server);
 app.startWatcher();
 
 // Cleanup on termination signals (e.g. SIGHUP from parent shell exit)
-function cleanup() {
-  logger.info("cmux-hub: Signal received, shutting down.");
+async function cleanup() {
+  logger.info("cmux-hub: shutting down...");
+  // AsyncDisposable — single path for all shutdown scenarios
+  await launcher?.[Symbol.asyncDispose]();
   watcher.stop();
   server.stop();
   process.exit(0);
@@ -281,7 +353,7 @@ async function waitForBrowserClose(surfaceRef: string) {
     await Bun.sleep(1000);
   }
   logger.info("Browser closed, shutting down.");
-  process.exit(0);
+  await cleanup();
 }
 
 // Dev mode: skip browser split, just log the URL

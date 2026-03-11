@@ -14,5 +14,6 @@ export function useStatus() {
     hasTerminal: data?.terminalSurface != null,
     actions: (data?.actions as MenuItem[] | undefined) ?? [],
     hasPlan: data?.hasPlan ?? false,
+    hasLauncher: (data as Record<string, unknown> | null)?.hasLauncher === true,
   };
 }

@@ -7,7 +7,7 @@
   },
   "type": "module",
   "scripts": {
-    "dev": "bun --hot src/cli.ts -p 4567 --actions .claude/cmux-hub.json",
+    "dev": "bun --hot src/cli.ts -p 4567 --actions .claude/cmux-hub.json .",
     "start": "NODE_ENV=production bun src/index.ts",
     "build": "bun run build.ts",
     "build:compile": "bun run build-compile.ts",
@@ -34,6 +34,7 @@
     "lucide-react": "^0.545.0",
     "react": "^19",
     "react-dom": "^19",
+    "react-grab": "^0.1.27",
     "shiki": "^4.0.1",
     "tailwind-merge": "^3.3.1"
   },

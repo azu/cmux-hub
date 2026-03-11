@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import { resolveBin } from "./git.ts";
 import { logger } from "./logger.ts";
 
-
 export type WatcherCallback = (event: string, filename: string | null) => void;
 export type WatcherFactory = (dir: string, callback: WatcherCallback) => { close: () => void };
 
@@ -53,7 +52,12 @@ export const defaultWatcherFactory: WatcherFactory = (dir, callback) => {
   const workTreeWatcher = watch(dir, { recursive: true }, (event, filename) => {
     if (!filename) return;
     // Filter .git directories (top-level and nested submodules)
-    if (filename.includes("/.git/") || filename.includes("\\.git\\") || filename.startsWith(".git/") || filename.startsWith(".git\\")) {
+    if (
+      filename.includes("/.git/") ||
+      filename.includes("\\.git\\") ||
+      filename.startsWith(".git/") ||
+      filename.startsWith(".git\\")
+    ) {
       const isRefChange =
         filename.includes("refs/") ||
         filename.endsWith("HEAD") ||
@@ -109,7 +113,6 @@ export function createFileWatcher(factory: WatcherFactory, cwd: string) {
       if (watcher) return;
       logger.debug("fileWatcher: starting for cwd:", cwd);
       watcher = factory(cwd, (_event, filename) => {
-
         if (filename && (filename.includes("refs/") || filename.endsWith("HEAD"))) {
           logger.debug("fileWatcher: pending ref change:", filename);
           pendingRefChange = true;
@@ -134,7 +137,14 @@ export function createFileWatcher(factory: WatcherFactory, cwd: string) {
             return;
           }
           const event: ChangeEvent = { hasRefChange: pendingRefChange };
-          logger.debug("fileWatcher: notifying", listeners.size, "listeners, hasRefChange:", pendingRefChange, "files:", relevant);
+          logger.debug(
+            "fileWatcher: notifying",
+            listeners.size,
+            "listeners, hasRefChange:",
+            pendingRefChange,
+            "files:",
+            relevant,
+          );
           pendingRefChange = false;
           for (const listener of listeners) {
             listener(event);

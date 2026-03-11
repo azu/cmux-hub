@@ -52,8 +52,8 @@ describe("isValidOrigin", () => {
     expect(isValidOrigin("http://evil.com", config)).toBe(false);
   });
 
-  test("rejects wrong port", () => {
-    expect(isValidOrigin("http://localhost:9999", config)).toBe(false);
+  test("allows other localhost ports (for preview pages)", () => {
+    expect(isValidOrigin("http://localhost:9999", config)).toBe(true);
   });
 });
 
@@ -75,7 +75,7 @@ describe("isValidSecFetchSite", () => {
   });
 
   test("rejects same-site POST (not same-origin)", () => {
-    expect(isValidSecFetchSite("same-site", "POST")).toBe(false);
+    expect(isValidSecFetchSite("same-site", "POST")).toBe(true);
   });
 
   test("allows null sec-fetch-site for POST (non-browser)", () => {
@@ -125,9 +125,18 @@ describe("validateRequest", () => {
     expect(result?.status).toBe(403);
   });
 
-  test("rejects cross-site POST via sec-fetch-site", () => {
+  test("allows cross-site POST from localhost origin (preview pages)", () => {
     const req = makeRequest("http://localhost:4567/api/comment", "POST", {
       origin: "http://localhost:4567",
+      "sec-fetch-site": "cross-site",
+    });
+    const result = validateRequest(req, config);
+    expect(result).toBeNull();
+  });
+
+  test("rejects cross-site POST from non-localhost origin", () => {
+    const req = makeRequest("http://localhost:4567/api/comment", "POST", {
+      origin: "http://evil.com",
       "sec-fetch-site": "cross-site",
     });
     const result = validateRequest(req, config);
