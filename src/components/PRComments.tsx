@@ -4,6 +4,7 @@ import { api } from "../lib/api.ts";
 type Comment = {
   id: number;
   body: string;
+  bodyHtml: string;
   user: string;
   path: string;
   line: number;
@@ -34,7 +35,10 @@ export function InlinePRComment({ comment, filePath }: Props) {
     <div className="flex items-start gap-2 py-1 text-sm">
       <div className="flex-1 min-w-0">
         <span className="text-[#58a6ff] font-medium">@{comment.user}</span>
-        <span className="text-[#848d97] ml-2 whitespace-pre-wrap break-words">{comment.body}</span>
+        <div
+          className="text-[#848d97] ml-2 markdown-body"
+          dangerouslySetInnerHTML={{ __html: comment.bodyHtml }}
+        />
       </div>
       <button
         onClick={handleSend}

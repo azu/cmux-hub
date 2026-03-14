@@ -8,6 +8,7 @@ import { api } from "../lib/api.ts";
 type PRComment = {
   id: number;
   body: string;
+  bodyHtml: string;
   user: string;
   path: string;
   line: number;
