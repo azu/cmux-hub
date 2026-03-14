@@ -15,6 +15,7 @@ type PRInfo = {
 type PRComment = {
   id: number;
   body: string;
+  bodyHtml: string;
   user: string;
   path: string;
   line: number;
@@ -67,6 +68,7 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
                   nodes {
                     databaseId
                     body
+                    bodyHTML
                     author { login }
                     path
                     line
@@ -103,6 +105,7 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
                     nodes: Array<{
                       databaseId: number;
                       body: string;
+                      bodyHTML: string;
                       author: { login: string };
                       path: string;
                       line: number;
@@ -123,6 +126,7 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
           comments.push({
             id: c.databaseId,
             body: c.body,
+            bodyHtml: c.bodyHTML,
             user: c.author.login,
             path: c.path,
             line: c.line,
