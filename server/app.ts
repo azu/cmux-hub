@@ -8,7 +8,7 @@ import {
   corsHeaders,
   isValidWebSocketOrigin,
 } from "./middleware/security.ts";
-import { parseDiff } from "../src/lib/diff-parser.ts";
+import { parseDiff, type ParsedDiff } from "../src/lib/diff-parser.ts";
 import { highlightDiffFiles } from "./diff-highlight.ts";
 import { getLangFromPath, highlightLines } from "./highlighter.ts";
 import { logger } from "./logger.ts";
@@ -186,6 +186,18 @@ export function createAppConfig(deps: AppDeps) {
     return jsonResponse({ error: message }, status, req);
   }
 
+  async function processAndHighlightDiff(raw: string): Promise<ParsedDiff> {
+    const parsed = parseDiff(raw);
+    const paths = parsed.map((f) => f.newPath);
+    const generated = await git.getGeneratedFiles(paths);
+    const toHighlight = parsed.filter((f) => !generated.has(f.newPath));
+    const highlighted = await highlightDiffFiles(toHighlight);
+    const generatedFiles = parsed
+      .filter((f) => generated.has(f.newPath))
+      .map((f) => ({ ...f, generated: true, hunks: [] }));
+    return [...highlighted, ...generatedFiles];
+  }
+
   const apiRoutes: Record<string, unknown> = {
     "/api/diff": {
       async GET(req: Request) {
@@ -196,7 +208,7 @@ export function createAppConfig(deps: AppDeps) {
           const base = url.searchParams.get("base") ?? undefined;
           const target = url.searchParams.get("target") ?? undefined;
           const raw = await git.getDiff(base, target);
-          const files = await highlightDiffFiles(parseDiff(raw));
+          const files = await processAndHighlightDiff(raw);
           return jsonResponse({ diff: raw, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -213,7 +225,7 @@ export function createAppConfig(deps: AppDeps) {
           const tracked = await git.getDiff(range.base);
           const untracked = range.includeUntracked ? await git.getUntrackedDiff() : "";
           const raw = [tracked, untracked].filter(Boolean).join("\n");
-          const files = await highlightDiffFiles(parseDiff(raw));
+          const files = await processAndHighlightDiff(raw);
           return jsonResponse({
             diff: raw,
             files,
@@ -288,7 +300,7 @@ export function createAppConfig(deps: AppDeps) {
           // Reject non-hex strings to prevent command injection via git show
           if (!/^[0-9a-f]{4,40}$/i.test(hash)) return errorResponse("invalid hash", 400);
           const raw = await git.getCommitDiff(hash);
-          const files = await highlightDiffFiles(parseDiff(raw));
+          const files = await processAndHighlightDiff(raw);
           return jsonResponse({ diff: raw, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");

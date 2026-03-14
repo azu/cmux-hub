@@ -111,7 +111,7 @@ export function DiffView({
           </span>
         </div>
       )}
-      {diff.map((file, idx) => (
+      {diff.filter((file) => !file.generated).map((file, idx) => (
         <DiffFile
           key={`${file.newPath}-${idx}`}
           file={file}

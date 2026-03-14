@@ -29,6 +29,7 @@ export type DiffFile = {
   isNew: boolean;
   isDeleted: boolean;
   isRenamed: boolean;
+  generated?: boolean;
 };
 
 export type ParsedDiff = DiffFile[];

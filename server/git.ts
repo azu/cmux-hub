@@ -173,6 +173,31 @@ export function createGitService(run: CommandRunner, cwd: string) {
       return diffs.filter(Boolean).join("\n");
     },
 
+    async getGeneratedFiles(filePaths: string[]): Promise<Set<string>> {
+      if (filePaths.length === 0) return new Set();
+      try {
+        const raw = await git([
+          "check-attr",
+          "linguist-generated",
+          "linguist-vendored",
+          "--",
+          ...filePaths,
+        ]);
+        const generated = new Set<string>();
+        for (const line of raw.split("\n")) {
+          if (!line) continue;
+          // Format: "path: attr: value"
+          const match = /^(.+?):\s*(linguist-generated|linguist-vendored):\s*(.+)$/.exec(line);
+          if (match && match[3] === "true" && match[1]) {
+            generated.add(match[1]);
+          }
+        }
+        return generated;
+      } catch {
+        return new Set();
+      }
+    },
+
     async getFileLines(filePath: string, start: number, end: number): Promise<string[]> {
       try {
         const resolved = path.resolve(cwd, filePath);
