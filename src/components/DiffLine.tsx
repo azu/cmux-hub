@@ -5,6 +5,7 @@ type Props = {
   line: DiffLineType;
   filePath: string;
   reviewMode?: boolean;
+  isNewFile?: boolean;
   selected?: boolean;
   canComment?: boolean;
   onMouseDown?: () => void;
@@ -49,6 +50,7 @@ const LINE_TEXT: Record<DiffLineType["type"], string> = {
 export function DiffLine({
   line,
   reviewMode,
+  isNewFile,
   selected,
   canComment,
   onMouseDown,
@@ -59,8 +61,9 @@ export function DiffLine({
   const hasTokens = line.tokens && line.tokens.length > 0;
 
   // Review mode: neutral colors (no diff background tinting)
+  // New files: use green-tinted gutter to match the file background
   const bg = reviewMode ? "" : LINE_BG[line.type];
-  const gutterBg = reviewMode ? "bg-[#161b22]" : GUTTER_BG[line.type];
+  const gutterBg = reviewMode ? (isNewFile ? "bg-[#1a3329]" : "bg-[#161b22]") : GUTTER_BG[line.type];
   const gutterText = reviewMode ? "text-[#848d97]" : GUTTER_TEXT[line.type];
   const prefixColor = reviewMode ? "text-transparent" : PREFIX_COLOR[line.type];
   const textColor = hasTokens ? "" : reviewMode ? "text-[#adbac7]" : LINE_TEXT[line.type];

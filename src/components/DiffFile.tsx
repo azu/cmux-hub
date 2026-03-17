@@ -313,7 +313,7 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
         </div>
       )}
       {!collapsed && (
-        <table className="w-full border-collapse">
+        <table className={`w-full border-collapse ${file.isNew ? "bg-[#12261e]" : ""}`}>
           <tbody>
             {flatItems.map((item) => {
               if (item.type === "hunk-header") {
@@ -371,6 +371,7 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
                     line={item.line}
                     filePath={file.newPath}
                     reviewMode={isReviewMode}
+                    isNewFile={file.isNew}
                     selected={isSelected}
                     canComment={!!onComment}
                     onMouseDown={onComment ? () => handleMouseDown(item.index) : undefined}
