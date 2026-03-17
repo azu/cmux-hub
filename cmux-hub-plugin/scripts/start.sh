@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-# Allow skipping via env (e.g. for development repos)
-if [ "${CMUX_HUB_SKIP:-}" = "1" ]; then
+# Allow skipping auto-start via env (e.g. for development repos)
+if [ "${CMUX_HUB_NO_AUTOSTART:-}" = "1" ]; then
   exit 0
 fi
 

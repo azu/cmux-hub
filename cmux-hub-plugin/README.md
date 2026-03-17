@@ -31,17 +31,21 @@ See [Custom Actions](https://github.com/azu/cmux-hub#custom-actions) for all opt
 
 ## Skip auto-launch
 
-Set `CMUX_HUB_SKIP=1` in your project's `.claude/settings.json` to prevent the plugin from starting cmux-hub automatically:
+Set `CMUX_HUB_NO_AUTOSTART=1` in your project's `.claude/settings.json` to prevent the plugin from starting cmux-hub automatically:
 
 ```json
 {
   "env": {
-    "CMUX_HUB_SKIP": "1"
+    "CMUX_HUB_NO_AUTOSTART": "1"
   }
 }
 ```
 
-This is useful when developing cmux-hub itself or running a custom dev server.
+This is useful when developing cmux-hub itself or running a custom dev server. You can still start cmux-hub manually with `/cmux-hub:start`.
+
+## Manual start
+
+Use the `/cmux-hub:start` skill to manually start cmux-hub in the current project. This works even when auto-start is disabled via `CMUX_HUB_NO_AUTOSTART=1`.
 
 ## Prerequisites
 

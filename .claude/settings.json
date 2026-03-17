@@ -1,6 +1,6 @@
 {
   "env": {
-    "CMUX_HUB_SKIP": "1",
+    "CMUX_HUB_NO_AUTOSTART": "1",
     "CMUX_HUB_DEBUG": "1"
   },
   "hooks": {
