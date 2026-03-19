@@ -1,6 +1,18 @@
 import { connect, type Socket } from "node:net";
+import { readFileSync } from "node:fs";
 
-const DEFAULT_SOCKET_PATH = "/tmp/cmux.sock";
+const SOCKET_PATH_FILE = "/tmp/cmux-last-socket-path";
+const FALLBACK_SOCKET_PATH = "/tmp/cmux.sock";
+
+function getDefaultSocketPath(): string {
+  try {
+    const path = readFileSync(SOCKET_PATH_FILE, "utf-8").trim();
+    if (path) return path;
+  } catch {
+    // file not found, fall back
+  }
+  return FALLBACK_SOCKET_PATH;
+}
 
 export type SocketConnector = (path: string) => Promise<CmuxConnection>;
 
@@ -91,9 +103,10 @@ function createConnection(socket: Socket): CmuxConnection {
 
 export type CmuxService = ReturnType<typeof createCmuxService>;
 
-export function createCmuxService(connector: SocketConnector, socketPath = DEFAULT_SOCKET_PATH) {
+export function createCmuxService(connector: SocketConnector, socketPath?: string) {
+  const resolvedSocketPath = socketPath ?? getDefaultSocketPath();
   async function withConnection<T>(fn: (conn: CmuxConnection) => Promise<T>): Promise<T> {
-    const conn = await connector(socketPath);
+    const conn = await connector(resolvedSocketPath);
     try {
       return await fn(conn);
     } finally {
