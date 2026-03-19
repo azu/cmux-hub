@@ -1,9 +1,11 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useContext } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { DiffFile as DiffFileType, DiffLine as DiffLineType } from "../lib/diff-parser.ts";
 import { DiffLine } from "./DiffLine.tsx";
 import { CommentForm } from "./CommentForm.tsx";
 import { InlinePRComment } from "./PRComments.tsx";
 import { api } from "../lib/api.ts";
+import { ScrollContainerContext } from "../App.tsx";
 
 type PRCommentData = {
   id: number;
@@ -36,7 +38,17 @@ type FlatExpandButton = {
   hunkIndex: number;
 };
 
+type FlatPRComment = {
+  type: "pr-comment";
+  comment: PRCommentData;
+};
+
+type FlatCommentForm = {
+  type: "comment-form";
+};
+
 type FlatItem = FlatLine | FlatHunkHeader | FlatExpandButton;
+type RenderItem = FlatItem | FlatPRComment | FlatCommentForm;
 
 type Props = {
   file: DiffFileType;
@@ -45,6 +57,7 @@ type Props = {
 };
 
 const EXPAND_LINES = 20;
+const VIRTUALIZE_THRESHOLD = 100;
 
 export function DiffFile({ file, onComment, prComments = [] }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -55,6 +68,7 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
   const [showFileComment, setShowFileComment] = useState(false);
   const [expandedLines, setExpandedLines] = useState<Map<string, DiffLineType[]>>(new Map());
   const [loadingExpand, setLoadingExpand] = useState<string | null>(null);
+  const scrollContainerRef = useContext(ScrollContainerContext);
 
   // Review mode: no diff coloring for new files or files with only additions
   const isReviewMode = useMemo(() => {
@@ -161,6 +175,43 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
   const selMin = selStart !== null && selEnd !== null ? Math.min(selStart, selEnd) : null;
   const selMax = selStart !== null && selEnd !== null ? Math.max(selStart, selEnd) : null;
 
+  // Flatten items with PR comments and comment form interleaved for rendering
+  const renderItems = useMemo(() => {
+    const items: RenderItem[] = [];
+    for (const item of flatItems) {
+      items.push(item);
+      if (item.type === "line") {
+        const lineNum = item.line.newLineNumber;
+        const lineComments = lineNum !== null ? commentsByLine.get(lineNum) : undefined;
+        if (lineComments) {
+          for (const c of lineComments) {
+            items.push({ type: "pr-comment", comment: c });
+          }
+        }
+        if (showComment && selMax !== null && item.index === selMax) {
+          items.push({ type: "comment-form" });
+        }
+      }
+    }
+    return items;
+  }, [flatItems, commentsByLine, showComment, selMax]);
+
+  const shouldVirtualize = renderItems.length > VIRTUALIZE_THRESHOLD;
+
+  const virtualizer = useVirtualizer({
+    count: shouldVirtualize && !collapsed ? renderItems.length : 0,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: (index) => {
+      const item = renderItems[index];
+      if (!item) return 24;
+      if (item.type === "hunk-header" || item.type === "expand") return 28;
+      if (item.type === "pr-comment") return 60;
+      if (item.type === "comment-form") return 120;
+      return 24;
+    },
+    overscan: 50,
+  });
+
   const handleMouseDown = useCallback(
     (index: number) => {
       if (!onComment) return;
@@ -265,6 +316,119 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
     [file.newPath],
   );
 
+  const renderRow = useCallback(
+    (item: RenderItem) => {
+      if (item.type === "hunk-header") {
+        return (
+          <tr className="bg-[#121d2f]">
+            <td colSpan={4} className="text-[#58a6ff]/80 text-xs font-mono px-4 py-1">
+              {item.header}
+            </td>
+          </tr>
+        );
+      }
+
+      if (item.type === "expand") {
+        const key =
+          item.direction === "up"
+            ? `before-${item.hunkIndex}`
+            : item.direction === "down"
+              ? `after-${item.hunkIndex}`
+              : `between-${item.hunkIndex}`;
+        const isLoading = loadingExpand === key;
+
+        return (
+          <tr className="bg-[#161b22] hover:bg-[#1c2128]">
+            <td colSpan={4} className="text-center py-1">
+              <button
+                className="text-[#58a6ff] hover:text-[#79c0ff] text-xs font-mono px-4 py-0.5 disabled:opacity-50"
+                disabled={isLoading}
+                onClick={() =>
+                  handleExpand(item.direction, item.fromLine, item.toLine, item.hunkIndex)
+                }
+              >
+                {isLoading
+                  ? "..."
+                  : item.direction === "up"
+                    ? "↑ Show lines above"
+                    : item.direction === "down"
+                      ? "↓ Show lines below"
+                      : `↕ Show ${item.toLine - item.fromLine + 1} hidden lines`}
+              </button>
+            </td>
+          </tr>
+        );
+      }
+
+      if (item.type === "pr-comment") {
+        return (
+          <tr>
+            <td colSpan={4} className="px-4 py-1 bg-[#1c2128] border-l-2 border-[#58a6ff]">
+              <InlinePRComment comment={item.comment} filePath={file.newPath} />
+            </td>
+          </tr>
+        );
+      }
+
+      if (item.type === "comment-form") {
+        return (
+          <tr>
+            <td colSpan={4} className="p-2 bg-gray-900">
+              <CommentForm onSubmit={handleSubmitComment} onCancel={handleCancelComment} />
+            </td>
+          </tr>
+        );
+      }
+
+      const isSelected =
+        selMin !== null && selMax !== null && item.index >= selMin && item.index <= selMax;
+
+      return (
+        <DiffLine
+          line={item.line}
+          filePath={file.newPath}
+          reviewMode={isReviewMode}
+          isNewFile={file.isNew}
+          selected={isSelected}
+          canComment={!!onComment}
+          onMouseDown={onComment ? () => handleMouseDown(item.index) : undefined}
+          onMouseEnter={onComment ? () => handleMouseEnter(item.index) : undefined}
+        />
+      );
+    },
+    [
+      file.newPath,
+      file.isNew,
+      isReviewMode,
+      onComment,
+      selMin,
+      selMax,
+      loadingExpand,
+      handleExpand,
+      handleMouseDown,
+      handleMouseEnter,
+      handleSubmitComment,
+      handleCancelComment,
+    ],
+  );
+
+  const renderItemKey = (item: RenderItem, i: number): string => {
+    switch (item.type) {
+      case "hunk-header":
+        return `hdr-${item.hunkIndex}`;
+      case "expand":
+        return `expand-${item.direction}-${item.hunkIndex}`;
+      case "pr-comment":
+        return `pr-comment-${item.comment.id}`;
+      case "comment-form":
+        return `comment-form`;
+      case "line":
+        return `line-${item.index}`;
+      default:
+        return `item-${i}`;
+    }
+  };
+
   const badge = file.isNew ? "New" : file.isDeleted ? "Deleted" : file.isRenamed ? "Renamed" : null;
 
   const badgeColor = file.isNew
@@ -272,6 +436,8 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
     : file.isDeleted
       ? "bg-[#da3633] text-white"
       : "bg-[#9e6a03] text-white";
+
+  const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div
@@ -313,96 +479,47 @@ export function DiffFile({ file, onComment, prComments = [] }: Props) {
         </div>
       )}
       {!collapsed && (
-        <table className={`w-full border-collapse ${file.isNew ? "bg-[#12261e]" : ""}`}>
-          <tbody>
-            {flatItems.map((item) => {
-              if (item.type === "hunk-header") {
+        <>
+          {shouldVirtualize ? (
+            <div
+              style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+              className={file.isNew ? "bg-[#12261e]" : ""}
+            >
+              {virtualItems.map((virtualRow) => {
+                const item = renderItems[virtualRow.index];
+                if (!item) return null;
                 return (
-                  <tr key={`hdr-${item.hunkIndex}`} className="bg-[#121d2f]">
-                    <td colSpan={4} className="text-[#58a6ff]/80 text-xs font-mono px-4 py-1">
-                      {item.header}
-                    </td>
-                  </tr>
+                  <div
+                    key={renderItemKey(item, virtualRow.index)}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                  >
+                    <table className="w-full border-collapse">
+                      <tbody>{renderRow(item)}</tbody>
+                    </table>
+                  </div>
                 );
-              }
-
-              if (item.type === "expand") {
-                const key =
-                  item.direction === "up"
-                    ? `before-${item.hunkIndex}`
-                    : item.direction === "down"
-                      ? `after-${item.hunkIndex}`
-                      : `between-${item.hunkIndex}`;
-                const isLoading = loadingExpand === key;
-
-                return (
-                  <tr key={`expand-${key}`} className="bg-[#161b22] hover:bg-[#1c2128]">
-                    <td colSpan={4} className="text-center py-1">
-                      <button
-                        className="text-[#58a6ff] hover:text-[#79c0ff] text-xs font-mono px-4 py-0.5 disabled:opacity-50"
-                        disabled={isLoading}
-                        onClick={() =>
-                          handleExpand(item.direction, item.fromLine, item.toLine, item.hunkIndex)
-                        }
-                      >
-                        {isLoading
-                          ? "..."
-                          : item.direction === "up"
-                            ? "↑ Show lines above"
-                            : item.direction === "down"
-                              ? "↓ Show lines below"
-                              : `↕ Show ${item.toLine - item.fromLine + 1} hidden lines`}
-                      </button>
-                    </td>
-                  </tr>
-                );
-              }
-
-              const isSelected =
-                selMin !== null && selMax !== null && item.index >= selMin && item.index <= selMax;
-              const isEndOfSelection = showComment && item.index === selMax;
-
-              const lineNum = item.line.newLineNumber;
-              const lineComments = lineNum !== null ? commentsByLine.get(lineNum) : undefined;
-
-              return (
-                <React.Fragment key={`line-${item.index}`}>
-                  <DiffLine
-                    line={item.line}
-                    filePath={file.newPath}
-                    reviewMode={isReviewMode}
-                    isNewFile={file.isNew}
-                    selected={isSelected}
-                    canComment={!!onComment}
-                    onMouseDown={onComment ? () => handleMouseDown(item.index) : undefined}
-                    onMouseEnter={onComment ? () => handleMouseEnter(item.index) : undefined}
-                  />
-                  {lineComments &&
-                    lineComments.map((c) => (
-                      <tr key={`pr-comment-${c.id}`}>
-                        <td
-                          colSpan={4}
-                          className="px-4 py-1 bg-[#1c2128] border-l-2 border-[#58a6ff]"
-                        >
-                          <InlinePRComment comment={c} filePath={file.newPath} />
-                        </td>
-                      </tr>
-                    ))}
-                  {isEndOfSelection && (
-                    <tr>
-                      <td colSpan={4} className="p-2 bg-gray-900">
-                        <CommentForm
-                          onSubmit={handleSubmitComment}
-                          onCancel={handleCancelComment}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+              })}
+            </div>
+          ) : (
+            <table className={`w-full border-collapse ${file.isNew ? "bg-[#12261e]" : ""}`}>
+              <tbody>
+                {renderItems.map((item, i) => (
+                  <React.Fragment key={renderItemKey(item, i)}>
+                    {renderRow(item)}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
     </div>
   );

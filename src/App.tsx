@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import { DiffView } from "./components/DiffView.tsx";
 import { Toolbar } from "./components/Toolbar.tsx";
 import { CIStatus } from "./components/CIStatus.tsx";
@@ -11,6 +11,10 @@ import { useStatus } from "./hooks/useStatus.ts";
 import { usePRData } from "./hooks/usePRData.ts";
 import { useLauncher } from "./hooks/useLauncher.ts";
 import "./index.css";
+
+export const ScrollContainerContext = React.createContext<React.RefObject<HTMLDivElement | null>>({
+  current: null,
+});
 
 export default function App() {
   const {
@@ -28,11 +32,13 @@ export default function App() {
   const { branch, hasTerminal, actions, hasPlan } = useStatus();
   const { prUrl, prTitle, prState, checks, prComments } = usePRData();
   const { hasLauncher, servers } = useLauncher();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Establish WebSocket connection (individual hooks subscribe via ws-message events)
   useWebSocket(() => {});
 
   return (
+    <ScrollContainerContext.Provider value={scrollContainerRef}>
     <div className="min-h-screen max-w-full overflow-x-hidden bg-[#0d1117] text-[#c9d1d9] flex flex-col">
       {refreshing && (
         <div className="fixed top-0 left-0 right-0 z-50 h-0.5 bg-[#1a1e24] overflow-hidden">
@@ -52,6 +58,7 @@ export default function App() {
       />
       {hasLauncher && servers.length > 0 && <LauncherStatus servers={servers} />}
       <div
+        ref={scrollContainerRef}
         className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
       >
         {route.page === "plan" ? (
@@ -86,5 +93,6 @@ export default function App() {
         )}
       </div>
     </div>
+    </ScrollContainerContext.Provider>
   );
 }
