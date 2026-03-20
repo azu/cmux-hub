@@ -9,19 +9,21 @@ function cwdToProjectKey(cwd: string): string {
   return cwd.replace(/[/.]/g, "-");
 }
 
-async function findLatestJsonl(projectDir: string): Promise<string | null> {
+async function findJsonlsByMtime(
+  projectDir: string,
+  limit = 5,
+): Promise<string[]> {
   const glob = new Bun.Glob("*.jsonl");
-  let latest: { path: string; mtime: number } | null = null;
+  const entries: { path: string; mtime: number }[] = [];
 
   for await (const entry of glob.scan({ cwd: projectDir })) {
     const fullPath = path.join(projectDir, entry);
     const stat = await Bun.file(fullPath).stat();
-    if (!latest || stat.mtime.getTime() > latest.mtime) {
-      latest = { path: fullPath, mtime: stat.mtime.getTime() };
-    }
+    entries.push({ path: fullPath, mtime: stat.mtime.getTime() });
   }
 
-  return latest?.path ?? null;
+  entries.sort((a, b) => b.mtime - a.mtime);
+  return entries.slice(0, limit).map((e) => e.path);
 }
 
 /**
@@ -57,20 +59,20 @@ async function extractPlanPath(jsonlPath: string): Promise<string | null> {
 }
 
 export async function findPlanFile(cwd: string): Promise<string | null> {
-  const projectKey = cwdToProjectKey(cwd);
+  const projectKey = cwdToProjectKey(path.resolve(cwd));
   const projectDir = path.join(PROJECTS_DIR, projectKey);
 
   if (!existsSync(projectDir)) {
     return null;
   }
 
-  const jsonlPath = await findLatestJsonl(projectDir);
-  if (!jsonlPath) return null;
+  const jsonlPaths = await findJsonlsByMtime(projectDir);
+  for (const jsonlPath of jsonlPaths) {
+    const planPath = await extractPlanPath(jsonlPath);
+    if (planPath && (await Bun.file(planPath).exists())) {
+      return planPath;
+    }
+  }
 
-  const planPath = await extractPlanPath(jsonlPath);
-  if (!planPath) return null;
-
-  if (!(await Bun.file(planPath).exists())) return null;
-
-  return planPath;
+  return null;
 }
