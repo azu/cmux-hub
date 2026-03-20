@@ -168,14 +168,6 @@ async function resolveTargetDir(): Promise<string> {
 
 const CWD = await resolveTargetDir();
 
-// Notify via cmux
-try {
-  Bun.spawn([CMUX_BIN, "notify", "--title", "cmux-hub", "--body", `Loading diff: ${CWD}`], {
-    stderr: "pipe",
-  });
-} catch {
-  // cmux not available
-}
 
 const git = createGitService(defaultCommandRunner, CWD);
 const connector = DRY_RUN ? createDryRunConnector() : createSocketConnector();
