@@ -639,7 +639,22 @@ export function createAppConfig(deps: AppDeps) {
           if (server.status !== "running")
             return errorResponse(`Server "${body.name}" is not running`, 400);
 
-          const surfaceRef = await deps.openPreviewSplit(`http://127.0.0.1:${server.port}`);
+          const previewUrl = `http://127.0.0.1:${server.port}`;
+
+          // Reuse existing surface if it's still alive
+          let surfaceRef = server.surfaceRef ?? null;
+          if (surfaceRef && deps.browserEval) {
+            const result = await deps.browserEval(surfaceRef, `window.location.href = ${JSON.stringify(previewUrl)}; "ok"`).catch(() => null);
+            if (!result) {
+              // Surface is dead, open a new one
+              surfaceRef = null;
+            }
+          }
+
+          if (!surfaceRef) {
+            surfaceRef = await deps.openPreviewSplit(previewUrl);
+          }
+
           if (surfaceRef) {
             deps.launcher.setSurfaceRef(body.name, surfaceRef);
             // Auto-inject inspector and start periodic re-injection for HMR/navigation
