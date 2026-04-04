@@ -510,7 +510,7 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
   return (
     <div
       data-testid="diff-file"
-      className="border border-[#30363d] rounded-md overflow-hidden mb-4"
+      className="border border-[#30363d] rounded-md overflow-x-hidden mb-4"
     >
       <div
         className="flex items-center gap-2 px-4 py-2 bg-[#161b22] border-b border-[#30363d] cursor-pointer hover:bg-[#1c2128] sticky top-0 z-10"
