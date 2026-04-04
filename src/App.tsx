@@ -54,14 +54,16 @@ export default function App() {
       />
       {hasLauncher && servers.length > 0 && <LauncherStatus servers={servers} />}
       <div
-        className={`flex-1 overflow-auto p-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
+        className={`flex-1 overflow-auto px-4 pb-4 transition-opacity duration-200 ${refreshing ? "opacity-60" : "opacity-100"}`}
       >
         {route.page === "plan" ? (
-          <PlanView onBack={() => navigate("/")} hasTerminal={hasTerminal} />
+          <div className="pt-4">
+            <PlanView onBack={() => navigate("/")} hasTerminal={hasTerminal} />
+          </div>
         ) : (
           <>
             {(checks.length > 0 || prUrl) && (
-              <div className="mb-4">
+              <div className="mt-4 mb-4">
                 <CIStatus checks={checks} prTitle={prTitle} prUrl={prUrl} prState={prState} />
               </div>
             )}

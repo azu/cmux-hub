@@ -508,12 +508,9 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
       : "bg-[#9e6a03] text-white";
 
   return (
-    <div
-      data-testid="diff-file"
-      className="border border-[#30363d] rounded-md overflow-x-hidden mb-4"
-    >
+    <div data-testid="diff-file" className="mb-4">
       <div
-        className="flex items-center gap-2 px-4 py-2 bg-[#161b22] border-b border-[#30363d] cursor-pointer hover:bg-[#1c2128] sticky top-0 z-10"
+        className="flex items-center gap-2 px-4 py-2 bg-[#161b22] border-b border-[#30363d] cursor-pointer hover:bg-[#1c2128] sticky top-0 z-10 -mx-4"
         onClick={() => setCollapsed(!collapsed)}
       >
         <span className="text-[#848d97] select-none text-xs">
@@ -539,7 +536,7 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
         )}
       </div>
       {showFileComment && (
-        <div className="px-4 py-2 bg-gray-900 border-b border-[#30363d]">
+        <div className="px-4 py-2 bg-gray-900 border-x border-b border-[#30363d]">
           <CommentForm
             onSubmit={handleSubmitFileComment}
             onCancel={() => setShowFileComment(false)}
@@ -547,7 +544,7 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
         </div>
       )}
       {!collapsed && (
-        <div style={{ contentVisibility: "auto", containIntrinsicSize: "auto 500px" } as React.CSSProperties}>
+        <div className="border-x border-b border-[#30363d] rounded-b-md overflow-hidden" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 500px" } as React.CSSProperties}>
           <table className={`w-full border-collapse ${file.isNew ? "bg-[#12261e]" : ""}`}>
             <tbody>
               {renderItems.map((item, i) => (
