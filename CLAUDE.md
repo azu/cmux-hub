@@ -48,7 +48,10 @@ Localhost-only server (`127.0.0.1`). Key defenses against browser-based attacks 
 - Null Origin rejected on POST from browsers
 - `/api/action` accepts action ID + variables only, not raw commands
 - Variable keys validated against `[A-Za-z_][A-Za-z0-9_]*`
-- File path access restricted to repository cwd
+- File path access restricted to repository cwd, plus server-configured
+  review directories (see below). Both `/api/review` (read) and
+  `/api/review/delete` (write) guard caller-supplied paths via
+  `isPathInsideReviewDirs` to prevent escape out of the configured set.
 
 ## HMR
 

@@ -1,7 +1,9 @@
 import React, { useCallback } from "react";
 import { DiffFile } from "./DiffFile.tsx";
+import type { CommentMode } from "./CommentForm.tsx";
 import { api } from "../lib/api.ts";
 import { useReviewData } from "../hooks/useReviewData.ts";
+import { useReviewQueue } from "../hooks/useReviewQueue.tsx";
 
 type Props = {
   onBack: () => void;
@@ -10,16 +12,27 @@ type Props = {
 
 export function ReviewView({ onBack, hasTerminal = false }: Props) {
   const { files, reviewDirs, loading, error, isPending, refetch } = useReviewData();
+  const { addToReview } = useReviewQueue();
 
   const handleComment = useCallback(
-    async (file: string, startLine: number, endLine: number, comment: string) => {
+    async (
+      file: string,
+      startLine: number,
+      endLine: number,
+      comment: string,
+      mode: CommentMode,
+    ) => {
+      if (mode === "review") {
+        addToReview({ file, startLine, endLine, comment });
+        return;
+      }
       try {
         await api.sendComment(file, startLine, endLine, comment);
       } catch (e) {
         console.error("Failed to send review comment:", e);
       }
     },
-    [],
+    [addToReview],
   );
 
   const handleDelete = useCallback(
