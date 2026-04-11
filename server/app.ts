@@ -477,39 +477,48 @@ export function createAppConfig(deps: AppDeps) {
           if (entries.length === 0) {
             return jsonResponse({ found: false, reviewDirs });
           }
-          const files = await Promise.all(
-            entries.map(async (entry) => {
-              const content = await Bun.file(entry.path).text();
-              const lines = content.split("\n");
-              const tokenLines = await highlightLines(content, "markdown");
-              const diffLines = lines.map((line, i) => ({
-                type: "add" as const,
-                content: line,
-                oldLineNumber: null,
-                newLineNumber: i + 1,
-                tokens: tokenLines[i],
-              }));
-              return {
-                oldPath: entry.path,
-                newPath: entry.path,
-                relativePath: entry.relativePath,
-                mtime: entry.mtime,
-                hunks: [
-                  {
-                    header: "",
-                    oldStart: 0,
-                    oldCount: 0,
-                    newStart: 1,
-                    newCount: lines.length,
-                    lines: diffLines,
-                  },
-                ],
-                isNew: true,
-                isDeleted: false,
-                isRenamed: false,
-              };
-            }),
-          );
+          const files = (
+            await Promise.all(
+              entries.map(async (entry) => {
+                try {
+                  const content = await Bun.file(entry.path).text();
+                  const lines = content.split("\n");
+                  const tokenLines = await highlightLines(content, "markdown");
+                  const diffLines = lines.map((line, i) => ({
+                    type: "add" as const,
+                    content: line,
+                    oldLineNumber: null,
+                    newLineNumber: i + 1,
+                    tokens: tokenLines[i],
+                  }));
+                  return {
+                    oldPath: entry.path,
+                    newPath: entry.path,
+                    relativePath: entry.relativePath,
+                    mtime: entry.mtime,
+                    hunks: [
+                      {
+                        header: "",
+                        oldStart: 0,
+                        oldCount: 0,
+                        newStart: 1,
+                        newCount: lines.length,
+                        lines: diffLines,
+                      },
+                    ],
+                    isNew: true,
+                    isDeleted: false,
+                    isRenamed: false,
+                  };
+                } catch {
+                  // File disappeared between scan and read, or became
+                  // unreadable for some other reason — skip it instead of
+                  // failing the whole endpoint.
+                  return null;
+                }
+              }),
+            )
+          ).filter((f): f is NonNullable<typeof f> => f !== null);
           return jsonResponse({ found: true, reviewDirs, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
