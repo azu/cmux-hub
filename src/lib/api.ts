@@ -76,7 +76,29 @@ export const api = {
       terminalSurface: string | null;
       actions: import("../../server/actions.ts").MenuItem[];
       hasPlan: boolean;
+      hasReview: boolean;
+      reviewDirs: string[];
     }>("/api/status");
+  },
+
+  getReview() {
+    return fetchJSON<{
+      found: boolean;
+      reviewDirs: string[];
+      files?: Array<
+        import("./diff-parser.ts").ParsedDiff[number] & {
+          relativePath: string;
+          mtime: number;
+        }
+      >;
+    }>("/api/review");
+  },
+
+  deleteReview(path: string) {
+    return fetchJSON<{ ok: boolean }>("/api/review/delete", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    });
   },
 
   getPlan() {

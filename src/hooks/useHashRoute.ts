@@ -4,12 +4,14 @@ type Route =
   | { page: "diff" }
   | { page: "commits" }
   | { page: "plan" }
+  | { page: "review" }
   | { page: "commit"; hash: string };
 
 function parseHash(hash: string): Route {
   const h = hash.replace(/^#\/?/, "");
   if (h === "commits") return { page: "commits" };
   if (h === "plan") return { page: "plan" };
+  if (h === "review") return { page: "review" };
   if (h.startsWith("commit/")) {
     const commitHash = h.slice("commit/".length);
     if (commitHash) return { page: "commit", hash: commitHash };

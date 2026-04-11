@@ -17,6 +17,8 @@ import type { MenuItem } from "./actions.ts";
 import { buildCommandWithEnv, findAction } from "./actions.ts";
 import { findPlanFile } from "./plan.ts";
 import { createPlanWatcher } from "./plan-watcher.ts";
+import { isPathInsideReviewDirs, listReviewFiles } from "./review.ts";
+import { createReviewWatcher } from "./review-watcher.ts";
 import type { Launcher, ServerState } from "./launcher.ts";
 import { generateInspectorScript } from "./inspector.ts";
 
@@ -36,6 +38,12 @@ type AppDeps = {
   autoShutdownMs?: number;
   /** Menu actions for the toolbar */
   actions?: MenuItem[];
+  /**
+   * Directories that are watched and served by the Review view. Any markdown
+   * file placed under these directories is shown as an AI-generated plan /
+   * review document that the user can read before the work is committed.
+   */
+  reviewDirs?: string[];
   /** Launcher for managing dev servers from launch.json */
   launcher?: Launcher;
   /** Callback to open a cmux browser split for preview */
@@ -90,6 +98,8 @@ export function createAppConfig(deps: AppDeps) {
   // Track which clients are in foreground (visible tab)
   const wsVisible = new Map<ServerWebSocket<unknown>, boolean>();
   let planWatcherInstance: ReturnType<typeof createPlanWatcher> | null = null;
+  let reviewWatcherInstance: ReturnType<typeof createReviewWatcher> | null = null;
+  const reviewDirs = deps.reviewDirs ?? [];
   let hasHadClients = false;
   let shutdownTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -362,10 +372,11 @@ export function createAppConfig(deps: AppDeps) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
         try {
-          const [status, branch, planPath] = await Promise.all([
+          const [status, branch, planPath, reviewFiles] = await Promise.all([
             git.getStatus(),
             git.getCurrentBranch(),
             findPlanFile(cwd).catch(() => null),
+            listReviewFiles(reviewDirs).catch(() => []),
           ]);
           return jsonResponse({
             status,
@@ -374,6 +385,8 @@ export function createAppConfig(deps: AppDeps) {
             terminalSurface: defaultSurfaceId ?? null,
             actions: deps.actions ?? [],
             hasPlan: planPath !== null,
+            hasReview: reviewFiles.length > 0,
+            reviewDirs,
             hasLauncher: !!deps.launcher,
           });
         } catch (e) {
@@ -424,6 +437,89 @@ export function createAppConfig(deps: AppDeps) {
               },
             ],
           });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/review/delete": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        try {
+          const body = (await req.json()) as { path?: string };
+          const target = body.path;
+          if (!target) return errorResponse("path required", 400);
+          if (!isPathInsideReviewDirs(target, reviewDirs)) {
+            return errorResponse("path not in review dirs", 403);
+          }
+          // Bun.file().unlink() is not available; use node:fs
+          const { rmSync } = await import("node:fs");
+          try {
+            rmSync(target, { force: true });
+          } catch (e) {
+            return errorResponse(e instanceof Error ? e.message : "failed to delete", 500);
+          }
+          return jsonResponse({ ok: true });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/review": {
+      async GET(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        try {
+          const entries = await listReviewFiles(reviewDirs);
+          if (entries.length === 0) {
+            return jsonResponse({ found: false, reviewDirs });
+          }
+          const files = (
+            await Promise.all(
+              entries.map(async (entry) => {
+                try {
+                  const content = await Bun.file(entry.path).text();
+                  const lines = content.split("\n");
+                  const tokenLines = await highlightLines(content, "markdown");
+                  const diffLines = lines.map((line, i) => ({
+                    type: "add" as const,
+                    content: line,
+                    oldLineNumber: null,
+                    newLineNumber: i + 1,
+                    tokens: tokenLines[i],
+                  }));
+                  return {
+                    oldPath: entry.path,
+                    newPath: entry.path,
+                    relativePath: entry.relativePath,
+                    mtime: entry.mtime,
+                    hunks: [
+                      {
+                        header: "",
+                        oldStart: 0,
+                        oldCount: 0,
+                        newStart: 1,
+                        newCount: lines.length,
+                        lines: diffLines,
+                      },
+                    ],
+                    isNew: true,
+                    isDeleted: false,
+                    isRenamed: false,
+                  };
+                } catch {
+                  // File disappeared between scan and read, or became
+                  // unreadable for some other reason — skip it instead of
+                  // failing the whole endpoint.
+                  return null;
+                }
+              }),
+            )
+          ).filter((f): f is NonNullable<typeof f> => f !== null);
+          return jsonResponse({ found: true, reviewDirs, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -644,7 +740,9 @@ export function createAppConfig(deps: AppDeps) {
           // Reuse existing surface if it's still alive
           let surfaceRef = server.surfaceRef ?? null;
           if (surfaceRef && deps.browserEval) {
-            const result = await deps.browserEval(surfaceRef, `window.location.href = ${JSON.stringify(previewUrl)}; "ok"`).catch(() => null);
+            const result = await deps
+              .browserEval(surfaceRef, `window.location.href = ${JSON.stringify(previewUrl)}; "ok"`)
+              .catch(() => null);
             if (!result) {
               // Surface is dead, open a new one
               surfaceRef = null;
@@ -830,7 +928,12 @@ export function createAppConfig(deps: AppDeps) {
           const msg = JSON.parse(typeof message === "string" ? message : message.toString());
           if (msg.type === "visibility" && typeof msg.visible === "boolean") {
             wsVisible.set(ws, msg.visible);
-            logger.debug("ws visibility:", msg.visible, "foreground clients:", [...wsVisible.values()].filter(Boolean).length);
+            logger.debug(
+              "ws visibility:",
+              msg.visible,
+              "foreground clients:",
+              [...wsVisible.values()].filter(Boolean).length,
+            );
             updatePollingState();
           }
         } catch {
@@ -895,7 +998,10 @@ export function createAppConfig(deps: AppDeps) {
 
       // Dev mode: serve built frontend files from devDistDir
       if (deps.development && deps.devDistDir) {
-        const filePath = path.join(deps.devDistDir, url.pathname === "/" ? "index.html" : url.pathname.slice(1));
+        const filePath = path.join(
+          deps.devDistDir,
+          url.pathname === "/" ? "index.html" : url.pathname.slice(1),
+        );
         return new Response(Bun.file(filePath));
       }
 
@@ -924,6 +1030,11 @@ export function createAppConfig(deps: AppDeps) {
       };
       planWatcherInstance = createPlanWatcher(cwd, broadcast);
       planWatcherInstance.start();
+
+      if (reviewDirs.length > 0) {
+        reviewWatcherInstance = createReviewWatcher(reviewDirs, broadcast);
+        reviewWatcherInstance.start();
+      }
     },
 
     broadcast(message: string) {
@@ -947,6 +1058,8 @@ export function createAppConfig(deps: AppDeps) {
       deps.watcher?.stop();
       planWatcherInstance?.stop();
       planWatcherInstance = null;
+      reviewWatcherInstance?.stop();
+      reviewWatcherInstance = null;
       stopInspectorReinjection();
     },
   };
