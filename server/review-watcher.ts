@@ -26,6 +26,22 @@ export function createReviewWatcher(reviewDirs: readonly string[], broadcast: Br
   };
 
   const resolve = () => {
+    // Close stale watchers for directories that no longer exist. This
+    // happens when a previous session's cleanup removed the default tmp
+    // dir, or when the OS tmp reaper deleted it. Without this step the
+    // entry stays in `watchers` forever and `watchers.has(dir) === true`
+    // below would prevent the re-created dir from ever being re-watched.
+    for (const [dir, watcher] of watchers) {
+      if (!existsSync(dir)) {
+        try {
+          watcher.close();
+        } catch {
+          // ignore
+        }
+        watchers.delete(dir);
+        logger.debug("reviewWatcher: removed stale watcher for", dir);
+      }
+    }
     for (const dir of reviewDirs) {
       if (watchers.has(dir)) continue;
       if (!existsSync(dir)) continue;
