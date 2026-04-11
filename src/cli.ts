@@ -17,6 +17,7 @@ import {
   resolveDefaultReviewDir,
   resolveReviewDirs,
   removeDirSafe,
+  type ReviewBinding,
 } from "../server/review.ts";
 import pkg from "../package.json" with { type: "json" };
 
@@ -29,6 +30,7 @@ const { values, positionals } = parseArgs({
     "dry-run": { type: "boolean", default: process.env.CMUX_HUB_DRY_RUN === "true" },
     actions: { type: "string", short: "a" },
     "review-dir": { type: "string", multiple: true },
+    "review-binding": { type: "string" },
     debug: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
     version: { type: "boolean", short: "v", default: false },
@@ -59,7 +61,10 @@ Options:
   -p, --port <port>      Server port (default: random)
   -a, --actions <file>   JSON file for toolbar actions (use - for stdin)
   --review-dir <path>    Directory watched by the Review view (repeatable).
-                         Default: \${TMPDIR}/cmux-hub-review/\${CMUX_SURFACE_ID}
+                         Default: \${TMPDIR}/cmux-hub-review/workspace-\${id}
+  --review-binding <id>  Granularity of the default review dir:
+                         "workspace" (default) binds to CMUX_WORKSPACE_ID,
+                         "surface" binds to CMUX_SURFACE_ID.
   --dry-run              Don't connect to cmux socket
   --debug                Enable debug logging
   -v, --version          Show version
@@ -138,13 +143,26 @@ const TERMINAL_SURFACE = await resolveTerminalSurface();
 
 // Resolve review directories:
 //   - explicit --review-dir flags take precedence (repeatable)
-//   - otherwise derive one from cmux workspace / surface env vars
+//   - otherwise derive one from the --review-binding granularity
+//     (defaults to workspace, falls back to surface/pid automatically
+//     when CMUX_WORKSPACE_ID is not set)
 const REVIEW_DIR_OVERRIDES = values["review-dir"] ?? [];
+const REVIEW_BINDING_RAW = values["review-binding"] ?? "workspace";
+if (REVIEW_BINDING_RAW !== "workspace" && REVIEW_BINDING_RAW !== "surface") {
+  console.error(
+    `Invalid --review-binding: ${REVIEW_BINDING_RAW} (expected "workspace" or "surface")`,
+  );
+  process.exit(1);
+}
+const REVIEW_BINDING: ReviewBinding = REVIEW_BINDING_RAW;
 const REVIEW_DIRS = (() => {
   if (REVIEW_DIR_OVERRIDES.length > 0) {
     return resolveReviewDirs(REVIEW_DIR_OVERRIDES, { createIfMissing: true });
   }
-  const defaultDir = resolveDefaultReviewDir({ surfaceId: TERMINAL_SURFACE });
+  const defaultDir = resolveDefaultReviewDir({
+    binding: REVIEW_BINDING,
+    surfaceId: TERMINAL_SURFACE,
+  });
   return resolveReviewDirs([defaultDir], { createIfMissing: true });
 })();
 logger.debug("review dirs:", REVIEW_DIRS);
@@ -188,7 +206,6 @@ async function resolveTargetDir(): Promise<string> {
 }
 
 const CWD = await resolveTargetDir();
-
 
 const git = createGitService(defaultCommandRunner, CWD);
 const connector = DRY_RUN ? createDryRunConnector() : createSocketConnector();
@@ -323,9 +340,7 @@ if (isDev) {
 }
 
 // In production, Bun's HTML import serves "/"; in dev, app.fetch serves from devDistDir
-const routes = isDev
-  ? app.apiRoutes
-  : { ...app.apiRoutes, "/": index };
+const routes = isDev ? app.apiRoutes : { ...app.apiRoutes, "/": index };
 
 const server = serve({
   port: PORT,

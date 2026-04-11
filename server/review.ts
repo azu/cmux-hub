@@ -26,19 +26,29 @@ export const REVIEW_ROOT = path.join(tmpdir(), "cmux-hub-review");
  * See https://cmux.com/ja/docs/concepts for the cmux hierarchy
  *   Window > Workspace > Pane > Surface > Panel
  */
-export function resolveDefaultReviewDir(options: {
-  overrideId?: string;
-  workspaceId?: string;
-  surfaceId?: string;
-  pid?: number;
-} = {}): string {
+export type ReviewBinding = "workspace" | "surface";
+
+export function resolveDefaultReviewDir(
+  options: {
+    overrideId?: string;
+    binding?: ReviewBinding;
+    workspaceId?: string;
+    surfaceId?: string;
+    pid?: number;
+  } = {},
+): string {
   const overrideId = options.overrideId;
   if (overrideId) {
     return path.join(REVIEW_ROOT, sanitizeSegment(overrideId));
   }
-  const workspaceId = options.workspaceId ?? process.env.CMUX_WORKSPACE_ID;
-  if (workspaceId) {
-    return path.join(REVIEW_ROOT, `workspace-${sanitizeSegment(workspaceId)}`);
+  // Default binding preference is workspace (more natural for project-level
+  // reviews). Callers can force "surface" when they want finer granularity.
+  const binding: ReviewBinding = options.binding ?? "workspace";
+  if (binding === "workspace") {
+    const workspaceId = options.workspaceId ?? process.env.CMUX_WORKSPACE_ID;
+    if (workspaceId) {
+      return path.join(REVIEW_ROOT, `workspace-${sanitizeSegment(workspaceId)}`);
+    }
   }
   const surfaceId = options.surfaceId ?? process.env.CMUX_SURFACE_ID;
   if (surfaceId) {
@@ -96,10 +106,7 @@ export function resolveReviewDirs(
  * Check whether an absolute path lives inside one of the allowed review dirs.
  * Used as a guard for any endpoint that reads files by caller-supplied path.
  */
-export function isPathInsideReviewDirs(
-  filePath: string,
-  reviewDirs: readonly string[],
-): boolean {
+export function isPathInsideReviewDirs(filePath: string, reviewDirs: readonly string[]): boolean {
   const abs = path.resolve(filePath);
   for (const dir of reviewDirs) {
     const root = path.resolve(dir);
@@ -113,9 +120,7 @@ export function isPathInsideReviewDirs(
 /**
  * List all markdown files under the given review directories, newest first.
  */
-export async function listReviewFiles(
-  reviewDirs: readonly string[],
-): Promise<ReviewFileInfo[]> {
+export async function listReviewFiles(reviewDirs: readonly string[]): Promise<ReviewFileInfo[]> {
   const entries: ReviewFileInfo[] = [];
   const glob = new Bun.Glob("**/*.md");
   for (const dir of reviewDirs) {
@@ -134,8 +139,7 @@ export async function listReviewFiles(
       }
     }
   }
-  entries.sort((a, b) => b.mtime - a.mtime);
-  return entries;
+  return entries.toSorted((a, b) => b.mtime - a.mtime);
 }
 
 /**

@@ -12,6 +12,7 @@ type Props = {
   actions: MenuItem[];
   onShowCommitList?: () => void;
   onShowPlan?: () => void;
+  onShowReview?: () => void;
   onShowDiff?: () => void;
 };
 
@@ -159,6 +160,7 @@ export function Toolbar({
   actions,
   onShowCommitList,
   onShowPlan,
+  onShowReview,
   onShowDiff,
 }: Props) {
   const [sending, setSending] = useState(false);
@@ -166,7 +168,10 @@ export function Toolbar({
   const { pending, submitReview, submitting: submittingReview, clearQueue } = useReviewQueue();
 
   return (
-    <div data-testid="toolbar" className="border-b border-[#30363d] bg-[#161b22] px-4 py-2 flex-shrink-0 z-20">
+    <div
+      data-testid="toolbar"
+      className="border-b border-[#30363d] bg-[#161b22] px-4 py-2 flex-shrink-0 z-20"
+    >
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1">
           <button
@@ -194,6 +199,17 @@ export function Toolbar({
                 onClick={onShowPlan}
               >
                 Plan
+              </button>
+            </>
+          )}
+          {onShowReview && (
+            <>
+              <span className="text-[#30363d]">/</span>
+              <button
+                className="text-[#848d97] hover:text-[#c9d1d9] text-sm leading-none"
+                onClick={onShowReview}
+              >
+                Review
               </button>
             </>
           )}

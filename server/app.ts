@@ -17,7 +17,7 @@ import type { MenuItem } from "./actions.ts";
 import { buildCommandWithEnv, findAction } from "./actions.ts";
 import { findPlanFile } from "./plan.ts";
 import { createPlanWatcher } from "./plan-watcher.ts";
-import { listReviewFiles } from "./review.ts";
+import { isPathInsideReviewDirs, listReviewFiles } from "./review.ts";
 import { createReviewWatcher } from "./review-watcher.ts";
 import type { Launcher, ServerState } from "./launcher.ts";
 import { generateInspectorScript } from "./inspector.ts";
@@ -443,6 +443,31 @@ export function createAppConfig(deps: AppDeps) {
       },
     },
 
+    "/api/review/delete": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        try {
+          const body = (await req.json()) as { path?: string };
+          const target = body.path;
+          if (!target) return errorResponse("path required", 400);
+          if (!isPathInsideReviewDirs(target, reviewDirs)) {
+            return errorResponse("path not in review dirs", 403);
+          }
+          // Bun.file().unlink() is not available; use node:fs
+          const { rmSync } = await import("node:fs");
+          try {
+            rmSync(target, { force: true });
+          } catch (e) {
+            return errorResponse(e instanceof Error ? e.message : "failed to delete", 500);
+          }
+          return jsonResponse({ ok: true });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
     "/api/review": {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
@@ -706,7 +731,9 @@ export function createAppConfig(deps: AppDeps) {
           // Reuse existing surface if it's still alive
           let surfaceRef = server.surfaceRef ?? null;
           if (surfaceRef && deps.browserEval) {
-            const result = await deps.browserEval(surfaceRef, `window.location.href = ${JSON.stringify(previewUrl)}; "ok"`).catch(() => null);
+            const result = await deps
+              .browserEval(surfaceRef, `window.location.href = ${JSON.stringify(previewUrl)}; "ok"`)
+              .catch(() => null);
             if (!result) {
               // Surface is dead, open a new one
               surfaceRef = null;
@@ -892,7 +919,12 @@ export function createAppConfig(deps: AppDeps) {
           const msg = JSON.parse(typeof message === "string" ? message : message.toString());
           if (msg.type === "visibility" && typeof msg.visible === "boolean") {
             wsVisible.set(ws, msg.visible);
-            logger.debug("ws visibility:", msg.visible, "foreground clients:", [...wsVisible.values()].filter(Boolean).length);
+            logger.debug(
+              "ws visibility:",
+              msg.visible,
+              "foreground clients:",
+              [...wsVisible.values()].filter(Boolean).length,
+            );
             updatePollingState();
           }
         } catch {
@@ -957,7 +989,10 @@ export function createAppConfig(deps: AppDeps) {
 
       // Dev mode: serve built frontend files from devDistDir
       if (deps.development && deps.devDistDir) {
-        const filePath = path.join(deps.devDistDir, url.pathname === "/" ? "index.html" : url.pathname.slice(1));
+        const filePath = path.join(
+          deps.devDistDir,
+          url.pathname === "/" ? "index.html" : url.pathname.slice(1),
+        );
         return new Response(Bun.file(filePath));
       }
 

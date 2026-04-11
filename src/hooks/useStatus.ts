@@ -5,7 +5,7 @@ import type { MenuItem } from "../../server/actions.ts";
 export function useStatus() {
   const { data } = useWSFetch({
     fetch: () => api.getStatus(),
-    wsMessageType: ["diff-updated", "plan-updated"],
+    wsMessageType: ["diff-updated", "plan-updated", "review-updated"],
   });
 
   return {
@@ -14,6 +14,7 @@ export function useStatus() {
     hasTerminal: data?.terminalSurface != null,
     actions: (data?.actions as MenuItem[] | undefined) ?? [],
     hasPlan: data?.hasPlan ?? false,
+    hasReview: data?.hasReview ?? false,
     hasLauncher: (data as Record<string, unknown> | null)?.hasLauncher === true,
   };
 }
