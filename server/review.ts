@@ -1,13 +1,59 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 /**
- * Default review directory. Any markdown file placed under this directory
- * is automatically shown in cmux-hub's Review view. Intended for AI-generated
- * plans / design docs that the user can review before the work is committed.
+ * Root directory that holds per-instance review subdirectories.
+ * Each cmux-hub instance gets its own subdirectory so that multiple
+ * instances (different cmux surfaces / sessions) never mix their files.
  */
-export const DEFAULT_REVIEW_DIR = path.join(tmpdir(), "cmux-hub-review");
+export const REVIEW_ROOT = path.join(tmpdir(), "cmux-hub-review");
+
+/**
+ * Pick a stable sub-directory name for this cmux-hub instance.
+ *
+ * Preference order:
+ *   1. Explicit `overrideId` — caller-resolved binding
+ *   2. `CMUX_WORKSPACE_ID` — the cmux workspace (sidebar entry, shown as a
+ *      "tab" in the UI). One workspace represents one project / work context,
+ *      and stays stable even when the user adds panes or surfaces within it.
+ *      This is the preferred granularity: a plan written while Claude runs in
+ *      a terminal surface is also visible when cmux-hub's browser surface is
+ *      in a different pane of the same workspace.
+ *   3. `CMUX_SURFACE_ID` — per-surface fallback (finer-grained than workspace).
+ *   4. Process PID — last-resort unique value when cmux env is absent.
+ *
+ * See https://cmux.com/ja/docs/concepts for the cmux hierarchy
+ *   Window > Workspace > Pane > Surface > Panel
+ */
+export function resolveDefaultReviewDir(options: {
+  overrideId?: string;
+  workspaceId?: string;
+  surfaceId?: string;
+  pid?: number;
+} = {}): string {
+  const overrideId = options.overrideId;
+  if (overrideId) {
+    return path.join(REVIEW_ROOT, sanitizeSegment(overrideId));
+  }
+  const workspaceId = options.workspaceId ?? process.env.CMUX_WORKSPACE_ID;
+  if (workspaceId) {
+    return path.join(REVIEW_ROOT, `workspace-${sanitizeSegment(workspaceId)}`);
+  }
+  const surfaceId = options.surfaceId ?? process.env.CMUX_SURFACE_ID;
+  if (surfaceId) {
+    return path.join(REVIEW_ROOT, `surface-${sanitizeSegment(surfaceId)}`);
+  }
+  const pid = options.pid ?? process.pid;
+  return path.join(REVIEW_ROOT, `pid-${pid}`);
+}
+
+/**
+ * Strip path separators and other characters that could escape the review root.
+ */
+function sanitizeSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, "_");
+}
 
 export type ReviewFileInfo = {
   /** Absolute path of the markdown file */
@@ -90,4 +136,16 @@ export async function listReviewFiles(
   }
   entries.sort((a, b) => b.mtime - a.mtime);
   return entries;
+}
+
+/**
+ * Remove a directory tree. Used at shutdown to clean up per-instance dirs.
+ * Safe: silently ignores missing paths and permission errors.
+ */
+export function removeDirSafe(dir: string): void {
+  try {
+    rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Ignore — best-effort cleanup
+  }
 }

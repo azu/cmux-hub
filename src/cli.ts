@@ -13,6 +13,11 @@ import { loadActions, DEFAULT_ACTIONS } from "../server/actions.ts";
 import type { MenuItem } from "../server/actions.ts";
 import { loadLaunchJson, createLauncher } from "../server/launcher.ts";
 import type { Launcher } from "../server/launcher.ts";
+import {
+  resolveDefaultReviewDir,
+  resolveReviewDirs,
+  removeDirSafe,
+} from "../server/review.ts";
 import pkg from "../package.json" with { type: "json" };
 
 const CMUX_BIN = "/Applications/cmux.app/Contents/Resources/bin/cmux";
@@ -23,6 +28,7 @@ const { values, positionals } = parseArgs({
     port: { type: "string", short: "p", default: process.env.PORT ?? "0" },
     "dry-run": { type: "boolean", default: process.env.CMUX_HUB_DRY_RUN === "true" },
     actions: { type: "string", short: "a" },
+    "review-dir": { type: "string", multiple: true },
     debug: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
     version: { type: "boolean", short: "v", default: false },
@@ -52,6 +58,8 @@ Commands:
 Options:
   -p, --port <port>      Server port (default: random)
   -a, --actions <file>   JSON file for toolbar actions (use - for stdin)
+  --review-dir <path>    Directory watched by the Review view (repeatable).
+                         Default: \${TMPDIR}/cmux-hub-review/\${CMUX_SURFACE_ID}
   --dry-run              Don't connect to cmux socket
   --debug                Enable debug logging
   -v, --version          Show version
@@ -127,6 +135,19 @@ async function resolveTerminalSurface(): Promise<string | undefined> {
 }
 
 const TERMINAL_SURFACE = await resolveTerminalSurface();
+
+// Resolve review directories:
+//   - explicit --review-dir flags take precedence (repeatable)
+//   - otherwise derive one from cmux workspace / surface env vars
+const REVIEW_DIR_OVERRIDES = values["review-dir"] ?? [];
+const REVIEW_DIRS = (() => {
+  if (REVIEW_DIR_OVERRIDES.length > 0) {
+    return resolveReviewDirs(REVIEW_DIR_OVERRIDES, { createIfMissing: true });
+  }
+  const defaultDir = resolveDefaultReviewDir({ surfaceId: TERMINAL_SURFACE });
+  return resolveReviewDirs([defaultDir], { createIfMissing: true });
+})();
+logger.debug("review dirs:", REVIEW_DIRS);
 
 // Load actions. Cache in globalThis for bun --hot (stdin can only be read once)
 let actions: MenuItem[] = DEFAULT_ACTIONS;
@@ -257,6 +278,7 @@ const appDeps: Parameters<typeof createAppConfig>[0] = {
   // CLI mode: waitForBrowserClose handles shutdown via cmux surface polling
   autoShutdownMs: undefined,
   actions,
+  reviewDirs: REVIEW_DIRS,
   launcher,
   openPreviewSplit,
   browserEval,
@@ -342,6 +364,14 @@ async function cleanup() {
   await launcher?.[Symbol.asyncDispose]();
   watcher.stop();
   server.stop();
+  // Remove auto-created review directories so orphan files from a previous
+  // run don't leak into the next session. User-specified --review-dir paths
+  // are preserved (they may be long-lived project dirs).
+  if (REVIEW_DIR_OVERRIDES.length === 0) {
+    for (const dir of REVIEW_DIRS) {
+      removeDirSafe(dir);
+    }
+  }
   process.exit(0);
 }
 // Remove old signal handlers before adding new ones (bun --hot cleanup)

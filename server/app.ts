@@ -17,6 +17,8 @@ import type { MenuItem } from "./actions.ts";
 import { buildCommandWithEnv, findAction } from "./actions.ts";
 import { findPlanFile } from "./plan.ts";
 import { createPlanWatcher } from "./plan-watcher.ts";
+import { listReviewFiles } from "./review.ts";
+import { createReviewWatcher } from "./review-watcher.ts";
 import type { Launcher, ServerState } from "./launcher.ts";
 import { generateInspectorScript } from "./inspector.ts";
 
@@ -36,6 +38,12 @@ type AppDeps = {
   autoShutdownMs?: number;
   /** Menu actions for the toolbar */
   actions?: MenuItem[];
+  /**
+   * Directories that are watched and served by the Review view. Any markdown
+   * file placed under these directories is shown as an AI-generated plan /
+   * review document that the user can read before the work is committed.
+   */
+  reviewDirs?: string[];
   /** Launcher for managing dev servers from launch.json */
   launcher?: Launcher;
   /** Callback to open a cmux browser split for preview */
@@ -90,6 +98,8 @@ export function createAppConfig(deps: AppDeps) {
   // Track which clients are in foreground (visible tab)
   const wsVisible = new Map<ServerWebSocket<unknown>, boolean>();
   let planWatcherInstance: ReturnType<typeof createPlanWatcher> | null = null;
+  let reviewWatcherInstance: ReturnType<typeof createReviewWatcher> | null = null;
+  const reviewDirs = deps.reviewDirs ?? [];
   let hasHadClients = false;
   let shutdownTimer: ReturnType<typeof setTimeout> | null = null;
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
@@ -362,10 +372,11 @@ export function createAppConfig(deps: AppDeps) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
         try {
-          const [status, branch, planPath] = await Promise.all([
+          const [status, branch, planPath, reviewFiles] = await Promise.all([
             git.getStatus(),
             git.getCurrentBranch(),
             findPlanFile(cwd).catch(() => null),
+            listReviewFiles(reviewDirs).catch(() => []),
           ]);
           return jsonResponse({
             status,
@@ -374,6 +385,8 @@ export function createAppConfig(deps: AppDeps) {
             terminalSurface: defaultSurfaceId ?? null,
             actions: deps.actions ?? [],
             hasPlan: planPath !== null,
+            hasReview: reviewFiles.length > 0,
+            reviewDirs,
             hasLauncher: !!deps.launcher,
           });
         } catch (e) {
@@ -424,6 +437,55 @@ export function createAppConfig(deps: AppDeps) {
               },
             ],
           });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/review": {
+      async GET(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        try {
+          const entries = await listReviewFiles(reviewDirs);
+          if (entries.length === 0) {
+            return jsonResponse({ found: false, reviewDirs });
+          }
+          const files = await Promise.all(
+            entries.map(async (entry) => {
+              const content = await Bun.file(entry.path).text();
+              const lines = content.split("\n");
+              const tokenLines = await highlightLines(content, "markdown");
+              const diffLines = lines.map((line, i) => ({
+                type: "add" as const,
+                content: line,
+                oldLineNumber: null,
+                newLineNumber: i + 1,
+                tokens: tokenLines[i],
+              }));
+              return {
+                oldPath: entry.path,
+                newPath: entry.path,
+                relativePath: entry.relativePath,
+                mtime: entry.mtime,
+                hunks: [
+                  {
+                    header: "",
+                    oldStart: 0,
+                    oldCount: 0,
+                    newStart: 1,
+                    newCount: lines.length,
+                    lines: diffLines,
+                  },
+                ],
+                isNew: true,
+                isDeleted: false,
+                isRenamed: false,
+              };
+            }),
+          );
+          return jsonResponse({ found: true, reviewDirs, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -924,6 +986,11 @@ export function createAppConfig(deps: AppDeps) {
       };
       planWatcherInstance = createPlanWatcher(cwd, broadcast);
       planWatcherInstance.start();
+
+      if (reviewDirs.length > 0) {
+        reviewWatcherInstance = createReviewWatcher(reviewDirs, broadcast);
+        reviewWatcherInstance.start();
+      }
     },
 
     broadcast(message: string) {
@@ -947,6 +1014,8 @@ export function createAppConfig(deps: AppDeps) {
       deps.watcher?.stop();
       planWatcherInstance?.stop();
       planWatcherInstance = null;
+      reviewWatcherInstance?.stop();
+      reviewWatcherInstance = null;
       stopInspectorReinjection();
     },
   };
