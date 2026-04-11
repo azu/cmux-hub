@@ -1,5 +1,15 @@
 ---
-description: Write a plan, design doc, or any markdown document to cmux-hub's Review directory so the user can review it in the browser before you start implementing. Trigger when the user says "レビューして", "cmuxでレビュー", "プランをレビュー", "review this plan", or otherwise asks for human review of a document you generated. Also use this skill when you want the user to sanity-check a plan before making code changes.
+description: |
+  Write a plan, design doc, or any markdown document to cmux-hub's Review
+  directory so the user can review it in the browser before you start
+  implementing. プラン・設計書・リファクタ案などのマークダウンを cmux-hub
+  のレビュー用ディレクトリに書き出し、コードを書き始める前にユーザーがブラ
+  ウザ上でレビューできるようにします。Trigger when the user says
+  "レビューして", "cmuxでレビュー", "プランをレビュー", "計画をチェック",
+  "review this plan", "check this design", or otherwise asks for human
+  review of a document you generated. Also use this skill proactively
+  when you want the user to sanity-check a plan before making code
+  changes (変更を加える前にプランの確認を取りたいとき).
 ---
 
 # Plan Review via cmux-hub
