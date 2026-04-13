@@ -9,10 +9,7 @@ function cwdToProjectKey(cwd: string): string {
   return cwd.replace(/[/.]/g, "-");
 }
 
-async function findJsonlsByMtime(
-  projectDir: string,
-  limit = 5,
-): Promise<string[]> {
+async function findJsonlsByMtime(projectDir: string, limit = 5): Promise<string[]> {
   const glob = new Bun.Glob("*.jsonl");
   const entries: { path: string; mtime: number }[] = [];
 

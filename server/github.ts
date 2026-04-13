@@ -31,35 +31,71 @@ type CICheck = {
   url: string;
 };
 
+type RestPR = {
+  number: number;
+  title: string;
+  state: string;
+  merged_at: string | null;
+  html_url: string;
+  head: { ref: string };
+  base: { ref: string };
+  body: string | null;
+};
+
 export function createGitHubService(run: CommandRunner, cwd: string) {
   const gh = (args: string[]) => run(["gh", ...args], { cwd });
 
+  // Cache owner/repo — won't change during a session
+  let cachedOwnerRepo: { owner: string; repo: string } | null = null;
+  async function getOwnerRepo(): Promise<{ owner: string; repo: string }> {
+    if (cachedOwnerRepo) return cachedOwnerRepo;
+    const raw = await gh(["repo", "view", "--json", "owner,name"]);
+    const data = JSON.parse(raw) as { owner: { login: string }; name: string };
+    cachedOwnerRepo = { owner: data.owner.login, repo: data.name };
+    return cachedOwnerRepo;
+  }
+
   return {
-    // Use `gh pr list` instead of `gh pr view` to distinguish "no PR" from API errors.
-    // `gh pr view` returns exit code 1 for both cases, making them indistinguishable.
-    // `gh pr list` returns exit code 0 with empty array when no PR exists,
-    // and exit code 1 only on real API errors (network, auth).
-    // ref: https://github.com/cli/cli — `gh pr view` vs `gh pr list` exit code behavior
+    // Use REST API with --cache for conditional requests (ETag/304).
+    // 304 responses don't count against GitHub's rate limit.
+    // REST `gh api` returns exit code 0 with empty array when no PR exists,
+    // and non-zero on real API errors, preserving the same error semantics
+    // as the previous `gh pr list` approach.
     async getCurrentPR(branch: string): Promise<PRInfo | null> {
+      const { owner, repo } = await getOwnerRepo();
       const raw = await gh([
-        "pr",
-        "list",
-        "--head",
-        branch,
-        "--state",
-        "all",
-        "--json",
-        "number,title,state,url,headRefName,baseRefName,body",
-        "--limit",
-        "1",
+        "api",
+        `repos/${owner}/${repo}/pulls`,
+        "--cache",
+        "30s",
+        "-f",
+        `head=${owner}:${branch}`,
+        "-f",
+        "state=all",
+        "-f",
+        "per_page=1",
       ]);
-      const results: PRInfo[] = JSON.parse(raw);
-      return results.length > 0 ? (results[0] ?? null) : null;
+      const results: RestPR[] = JSON.parse(raw);
+      if (results.length === 0) return null;
+      const pr = results[0];
+      if (!pr) return null;
+      // REST API uses lowercase state without "merged" — derive from merged_at
+      const state = pr.merged_at ? "MERGED" : pr.state === "closed" ? "CLOSED" : "OPEN";
+      return {
+        number: pr.number,
+        title: pr.title,
+        state,
+        url: pr.html_url,
+        headRefName: pr.head.ref,
+        baseRefName: pr.base.ref,
+        body: pr.body ?? "",
+      };
     },
 
     async getPRComments(prNumber: number): Promise<PRComment[]> {
-      const query = `query($number: Int!) {
-        repository(owner: "{owner}", name: "{repo}") {
+      const { owner, repo } = await getOwnerRepo();
+      const query = `query($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
           pullRequest(number: $number) {
             reviewThreads(first: 100) {
               nodes {
@@ -81,16 +117,16 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
           }
         }
       }`;
-      // Resolve {owner}/{repo} via gh repo view
-      const repoRaw = await gh(["repo", "view", "--json", "owner,name"]);
-      const repo = JSON.parse(repoRaw) as { owner: { login: string }; name: string };
-      const resolvedQuery = query.replace("{owner}", repo.owner.login).replace("{repo}", repo.name);
 
       const raw = await gh([
         "api",
         "graphql",
         "-f",
-        `query=${resolvedQuery}`,
+        `query=${query}`,
+        "-F",
+        `owner=${owner}`,
+        "-F",
+        `repo=${repo}`,
         "-F",
         `number=${prNumber}`,
       ]);
@@ -159,8 +195,7 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
     },
 
     async getCIChecks({ prNumber }: { prNumber: number }): Promise<CICheck[]> {
-      const repoRaw = await gh(["repo", "view", "--json", "owner,name"]);
-      const repo = JSON.parse(repoRaw) as { owner: { login: string }; name: string };
+      const { owner, repo } = await getOwnerRepo();
       const query = `query($owner: String!, $name: String!, $number: Int!) {
         repository(owner: $owner, name: $name) {
           pullRequest(number: $number) {
@@ -191,9 +226,9 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
         "-f",
         `query=${query}`,
         "-F",
-        `owner=${repo.owner.login}`,
+        `owner=${owner}`,
         "-F",
-        `name=${repo.name}`,
+        `name=${repo}`,
         "-F",
         `number=${prNumber}`,
       ]);

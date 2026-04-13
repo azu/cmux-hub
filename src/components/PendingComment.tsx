@@ -72,10 +72,7 @@ export function PendingComment({ comment, onUpdate, onDelete }: PendingCommentPr
         >
           Edit
         </button>
-        <button
-          onClick={onDelete}
-          className="text-xs text-[#848d97] hover:text-[#f85149] px-1"
-        >
+        <button onClick={onDelete} className="text-xs text-[#848d97] hover:text-[#f85149] px-1">
           Delete
         </button>
       </div>

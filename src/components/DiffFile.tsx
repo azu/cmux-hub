@@ -66,7 +66,13 @@ type RenderItem = FlatItem | FlatPRComment | FlatCommentForm | FlatPendingCommen
 
 type Props = {
   file: DiffFileType;
-  onComment?: (file: string, startLine: number, endLine: number, comment: string, mode: CommentMode) => void;
+  onComment?: (
+    file: string,
+    startLine: number,
+    endLine: number,
+    comment: string,
+    mode: CommentMode,
+  ) => void;
   prComments?: PRCommentData[];
   pendingComments?: PendingCommentData[];
 };
@@ -244,15 +250,27 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
         }
         if (showComment && selMax !== null && item.index === selMax) {
           if (selectedLineRange) {
-            items.push({ type: "copy-tooltip", file: file.newPath, startLine: selectedLineRange[0], endLine: selectedLineRange[1] });
+            items.push({
+              type: "copy-tooltip",
+              file: file.newPath,
+              startLine: selectedLineRange[0],
+              endLine: selectedLineRange[1],
+            });
           }
           items.push({ type: "comment-form" });
         }
       }
     }
     return items;
-  }, [flatItems, commentsByLine, pendingByLine, showComment, selMax, selectedLineRange, file.newPath]);
-
+  }, [
+    flatItems,
+    commentsByLine,
+    pendingByLine,
+    showComment,
+    selMax,
+    selectedLineRange,
+    file.newPath,
+  ]);
 
   const handleMouseDown = useCallback(
     (index: number) => {
@@ -289,7 +307,6 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
     setSelEnd(null);
     setShowComment(false);
   }, []);
-
 
   const handleSubmitComment = useCallback(
     (comment: string, mode: CommentMode) => {
@@ -409,7 +426,10 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
       }
 
       if (item.type === "copy-tooltip") {
-        const range = item.startLine === item.endLine ? `${item.startLine}` : `${item.startLine}-${item.endLine}`;
+        const range =
+          item.startLine === item.endLine
+            ? `${item.startLine}`
+            : `${item.startLine}-${item.endLine}`;
         const ref = `${item.file}:${range}`;
         return (
           <tr>
@@ -433,10 +453,7 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
         return (
           <tr>
             <td colSpan={4} className="p-2 bg-gray-900">
-              <CommentForm
-                onSubmit={handleSubmitComment}
-                onCancel={handleCancelComment}
-              />
+              <CommentForm onSubmit={handleSubmitComment} onCancel={handleCancelComment} />
             </td>
           </tr>
         );
@@ -544,13 +561,16 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
         </div>
       )}
       {!collapsed && (
-        <div className="border-x border-b border-[#30363d] rounded-b-md overflow-hidden" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 500px" } as React.CSSProperties}>
+        <div
+          className="border-x border-b border-[#30363d] rounded-b-md overflow-hidden"
+          style={
+            { contentVisibility: "auto", containIntrinsicSize: "auto 500px" } as React.CSSProperties
+          }
+        >
           <table className={`w-full border-collapse ${file.isNew ? "bg-[#12261e]" : ""}`}>
             <tbody>
               {renderItems.map((item, i) => (
-                <React.Fragment key={renderItemKey(item, i)}>
-                  {renderRow(item)}
-                </React.Fragment>
+                <React.Fragment key={renderItemKey(item, i)}>{renderRow(item)}</React.Fragment>
               ))}
             </tbody>
           </table>

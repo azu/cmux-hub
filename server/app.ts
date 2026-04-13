@@ -180,9 +180,9 @@ export function createAppConfig(deps: AppDeps) {
 
   function startPolling() {
     if (pollTimer) return;
-    // Fetch immediately, then poll every 10s
+    // Fetch immediately, then poll every 60s
     pollGitHub();
-    pollTimer = setInterval(pollGitHub, 10000);
+    pollTimer = setInterval(pollGitHub, 60_000);
   }
 
   function stopPolling() {
