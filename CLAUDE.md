@@ -53,6 +53,14 @@ Localhost-only server (`127.0.0.1`). Key defenses against browser-based attacks 
   `/api/review/delete` (write) guard caller-supplied paths via
   `isPathInsideReviewDirs` to prevent escape out of the configured set.
 
+## GitHub API Rate Limit
+
+`gh api --cache <duration>` を使ってREST APIのETag/条件付きリクエストを活用する。304応答はrate limitにカウントされない。`gh pr list`等の高レベルコマンドは`--cache`非対応なので、rate limitが問題になるエンドポイントは`gh api repos/...`のREST APIに切り替える。
+
+- `getCurrentPR`: `gh api repos/{owner}/{repo}/pulls --cache 30s`
+- owner/repo解決（`gh repo view`）はセッション内でキャッシュ（変わらないため）
+- REST APIのstate（小文字`open`/`closed`）はフロント用に大文字`OPEN`/`CLOSED`/`MERGED`に正規化。`merged`はstateではなく`merged_at`で判定
+
 ## HMR
 
 `bun --hot` re-executes top-level code. Use `globalThis` to persist state across reloads (e.g. browser surface ref to avoid opening duplicate windows).
