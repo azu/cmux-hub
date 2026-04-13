@@ -48,7 +48,13 @@ export function DiffView({
   const { addToReview, pending } = useReviewQueue();
 
   const handleComment = useCallback(
-    async (file: string, startLine: number, endLine: number, comment: string, mode: CommentMode) => {
+    async (
+      file: string,
+      startLine: number,
+      endLine: number,
+      comment: string,
+      mode: CommentMode,
+    ) => {
       if (mode === "review") {
         addToReview({ file, startLine, endLine, comment });
       } else {
@@ -119,15 +125,17 @@ export function DiffView({
           </span>
         </div>
       )}
-      {diff.filter((file) => !file.generated).map((file, idx) => (
-        <DiffFile
-          key={`${file.newPath}-${idx}`}
-          file={file}
-          onComment={hasTerminal ? handleComment : undefined}
-          prComments={prComments.filter((c) => c.path === file.newPath)}
-          pendingComments={pending.filter((c) => c.file === file.newPath)}
-        />
-      ))}
+      {diff
+        .filter((file) => !file.generated)
+        .map((file, idx) => (
+          <DiffFile
+            key={`${file.newPath}-${idx}`}
+            file={file}
+            onComment={hasTerminal ? handleComment : undefined}
+            prComments={prComments.filter((c) => c.path === file.newPath)}
+            pendingComments={pending.filter((c) => c.file === file.newPath)}
+          />
+        ))}
     </div>
   );
 }

@@ -11,6 +11,19 @@ function validHeaders(): Record<string, string> {
   return { host: `127.0.0.1:${PORT}` };
 }
 
+// REST API format (gh api repos/.../pulls)
+const REST_PR_DATA = {
+  number: 42,
+  title: "Test PR",
+  state: "open",
+  merged_at: null,
+  html_url: "https://github.com/test/repo/pull/42",
+  head: { ref: "feature/test" },
+  base: { ref: "main" },
+  body: "PR body",
+};
+
+// Expected normalized format after conversion
 const PR_DATA = {
   number: 42,
   title: "Test PR",
@@ -60,9 +73,9 @@ describe("pollGitHub cache behavior", () => {
     let shouldFail = false;
     const ghRunner: CommandRunner = async (cmd) => {
       const key = cmd.join(" ");
-      if (key.includes("gh pr list")) {
+      if (key.includes("gh api repos/") && key.includes("/pulls") && !key.includes("reviews")) {
         if (shouldFail) throw new Error("HTTP 500");
-        return JSON.stringify([PR_DATA]);
+        return JSON.stringify([REST_PR_DATA]);
       }
       if (key.includes("gh repo view"))
         return JSON.stringify({ owner: { login: "test" }, name: "repo" });
@@ -102,8 +115,8 @@ describe("pollGitHub cache behavior", () => {
     let hasPR = true;
     const ghRunner: CommandRunner = async (cmd) => {
       const key = cmd.join(" ");
-      if (key.includes("gh pr list")) {
-        return hasPR ? JSON.stringify([PR_DATA]) : JSON.stringify([]);
+      if (key.includes("gh api repos/") && key.includes("/pulls") && !key.includes("reviews")) {
+        return hasPR ? JSON.stringify([REST_PR_DATA]) : JSON.stringify([]);
       }
       if (key.includes("gh repo view"))
         return JSON.stringify({ owner: { login: "test" }, name: "repo" });

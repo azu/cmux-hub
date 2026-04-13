@@ -11,7 +11,7 @@ index abc1234..def5678 100644
 +++ b/src/index.ts
 @@ -1,3 +1,4 @@
  import { serve } from "bun";
-+import { newModule } from "./new";
++import { addedModule } from "./new";
 
  const server = serve({`;
 
@@ -38,15 +38,16 @@ function createFakeRunner(): { runner: CommandRunner; calls: string[][] } {
     if (key.includes("diff --name-only")) return "src/index.ts\n";
     if (key.includes("branch -a")) return "main\nfeature/test\n";
     if (key.includes("status --porcelain")) return "M src/index.ts\n";
-    if (key.includes("gh pr list"))
+    if (key.includes("gh api repos/") && key.includes("/pulls") && !key.includes("reviews"))
       return JSON.stringify([
         {
           number: 42,
           title: "Test PR",
-          state: "OPEN",
-          url: "https://github.com/test/repo/pull/42",
-          headRefName: "feature/test",
-          baseRefName: "main",
+          state: "open",
+          merged_at: null,
+          html_url: "https://github.com/test/repo/pull/42",
+          head: { ref: "feature/test" },
+          base: { ref: "main" },
           body: "PR body",
         },
       ]);
@@ -156,7 +157,7 @@ describe("API integration", () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.diff).toContain("diff --git");
-    expect(data.diff).toContain("newModule");
+    expect(data.diff).toContain("addedModule");
   });
 
   test("GET /api/diff/auto returns auto-detected diff", async () => {

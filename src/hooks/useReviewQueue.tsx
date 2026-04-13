@@ -56,7 +56,15 @@ export function ReviewQueueProvider({ children }: { children: React.ReactNode })
 
   return (
     <ReviewQueueContext.Provider
-      value={{ pending, addToReview, updatePending, removePending, clearQueue, submitReview, submitting }}
+      value={{
+        pending,
+        addToReview,
+        updatePending,
+        removePending,
+        clearQueue,
+        submitReview,
+        submitting,
+      }}
     >
       {children}
     </ReviewQueueContext.Provider>
