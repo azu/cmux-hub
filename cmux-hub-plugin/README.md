@@ -47,6 +47,10 @@ This is useful when developing cmux-hub itself or running a custom dev server. Y
 
 Use the `/cmux-hub:start` skill to manually start cmux-hub in the current project. This works even when auto-start is disabled via `CMUX_HUB_NO_AUTOSTART=1`.
 
+## Cleanup
+
+A `SessionEnd` hook terminates the per-session `cmux-hub` server when the Claude Code session exits. Each session's PID is tracked at `${XDG_STATE_HOME:-~/.local/state}/cmux-hub/sessions/<session_id>.pid` so cleanup targets only this session's server, leaving concurrent surfaces alone.
+
 ## Prerequisites
 
 cmux-hub connects to the cmux Unix socket. See [Prerequisites](https://github.com/azu/cmux-hub#prerequisites) for socket mode configuration.
