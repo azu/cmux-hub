@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useActionState, createContext, useContext } from "react";
 import { api } from "../lib/api.ts";
+import { handleDelivery } from "../lib/delivery.ts";
+import { useToast } from "../components/Toast.tsx";
 
 export type PendingComment = {
   id: string;
@@ -29,6 +31,7 @@ function formatRange(file: string, startLine: number, endLine: number): string {
 
 export function ReviewQueueProvider({ children }: { children: React.ReactNode }) {
   const [pending, setPending] = useState<PendingComment[]>([]);
+  const { showToast } = useToast();
 
   const addToReview = useCallback((item: Omit<PendingComment, "id">) => {
     setPending((prev) => [...prev, { ...item, id: crypto.randomUUID() }]);
@@ -50,7 +53,8 @@ export function ReviewQueueProvider({ children }: { children: React.ReactNode })
     const text = items
       .map((p) => `${formatRange(p.file, p.startLine, p.endLine)} ${p.comment}`)
       .join("\n");
-    await api.sendToTerminal(text + "\n");
+    const result = await api.sendToTerminal(text + "\n");
+    await handleDelivery(result, showToast);
     clearQueue();
   }, undefined);
 

@@ -11,10 +11,12 @@ import {
 } from "./middleware/security.ts";
 import { parseDiff, type ParsedDiff } from "../src/lib/diff-parser.ts";
 import { highlightDiffFiles } from "./diff-highlight.ts";
+import { addWordDiffRanges } from "./word-diff.ts";
 import { getLangFromPath, highlightLines } from "./highlighter.ts";
 import { logger } from "./logger.ts";
 import type { MenuItem } from "./actions.ts";
 import { buildCommandWithEnv, findAction } from "./actions.ts";
+import type { ProjectRegistry } from "./projects.ts";
 import { findPlanFile } from "./plan.ts";
 import { createPlanWatcher } from "./plan-watcher.ts";
 import { isPathInsideReviewDirs, listReviewFiles } from "./review.ts";
@@ -24,10 +26,13 @@ import { generateInspectorScript } from "./inspector.ts";
 
 type AppDeps = {
   port: number;
-  git: GitService;
+  /** Single-project mode default services. Optional in hub mode. */
+  git?: GitService;
   cmux: CmuxService;
-  github: GitHubService;
-  cwd: string;
+  github?: GitHubService;
+  cwd?: string;
+  /** Multi-project registry. When set, APIs accept a ?project=<id> param. */
+  registry?: ProjectRegistry;
   defaultSurfaceId?: string;
   browserSurfaceId?: string;
   /** When true, serve dev-built frontend assets from devDistDir */
@@ -130,52 +135,71 @@ export function createAppConfig(deps: AppDeps) {
     }
   }
 
-  // Cached GitHub data — updated by polling, served by API endpoints
-  let cachedPR: Awaited<ReturnType<typeof github.getCurrentPR>> = null;
-  let cachedChecks: Awaited<ReturnType<typeof github.getCIChecks>> = [];
-  let cachedComments: Awaited<ReturnType<typeof github.getPRComments>> = [];
+  // Cached GitHub data per project — updated by polling, served by API endpoints.
+  // Single-project mode uses DEFAULT_PR_KEY; hub mode keys by project id.
+  const DEFAULT_PR_KEY = "__default__";
+  type PRStoreEntry = {
+    pr: Awaited<ReturnType<NonNullable<AppDeps["github"]>["getCurrentPR"]>>;
+    checks: Awaited<ReturnType<NonNullable<AppDeps["github"]>["getCIChecks"]>>;
+    comments: Awaited<ReturnType<NonNullable<AppDeps["github"]>["getPRComments"]>>;
+    fetchedAt: number;
+  };
+  const prStore = new Map<string, PRStoreEntry>();
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-  async function pollGitHub() {
-    let pr: Awaited<ReturnType<typeof github.getCurrentPR>>;
+  async function pollProject(key: string, gitSvc: GitService, githubSvc: GitHubService) {
+    let pr: PRStoreEntry["pr"];
     try {
-      const branch = await git.getCurrentBranch();
-      pr = await github.getCurrentPR(branch);
+      const branch = await gitSvc.getCurrentBranch();
+      pr = await githubSvc.getCurrentPR(branch);
     } catch {
       // API error (network, auth, etc.) — keep cached values, skip update
       return;
     }
-    cachedPR = pr;
-    if (!pr) {
-      cachedChecks = [];
-      cachedComments = [];
-      const message = JSON.stringify({
-        type: "pr-updated",
-        data: { pr: null, checks: [], comments: [] },
-      });
-      for (const ws of wsClients.keys()) {
-        ws.send(message);
+    let checks: PRStoreEntry["checks"] = [];
+    let comments: PRStoreEntry["comments"] = [];
+    if (pr) {
+      try {
+        [checks, comments] = await Promise.all([
+          githubSvc.getCIChecks({ prNumber: pr.number }),
+          githubSvc.getPRComments(pr.number),
+        ]);
+      } catch {
+        // CI/comments fetch error — keep PR info but reuse previous checks/comments
+        const prev = prStore.get(key);
+        checks = prev?.checks ?? [];
+        comments = prev?.comments ?? [];
       }
+    }
+    prStore.set(key, { pr, checks, comments, fetchedAt: Date.now() });
+    const message = JSON.stringify({
+      type: "pr-updated",
+      project: key === DEFAULT_PR_KEY ? undefined : key,
+      data: { pr, checks, comments },
+    });
+    for (const ws of wsClients.keys()) {
+      ws.send(message);
+    }
+  }
+
+  async function pollGitHub() {
+    if (deps.registry) {
+      await Promise.all(deps.registry.active().map((e) => pollProject(e.info.id, e.git, e.github)));
       return;
     }
-    try {
-      const [checks, comments] = await Promise.all([
-        github.getCIChecks({ prNumber: pr.number }),
-        github.getPRComments(pr.number),
-      ]);
-      cachedChecks = checks;
-      cachedComments = comments;
-      const message = JSON.stringify({
-        type: "pr-updated",
-        data: { pr, checks, comments },
-      });
-      for (const ws of wsClients.keys()) {
-        ws.send(message);
-      }
-    } catch {
-      // CI/comments fetch error — keep PR info but don't update checks/comments
+    if (git && github) {
+      await pollProject(DEFAULT_PR_KEY, git, github);
     }
+  }
+
+  /** Read PR data for a project, fetching on demand when nothing is cached yet */
+  async function getPRData(ctx: ProjectCtx): Promise<PRStoreEntry> {
+    const key = ctx.id ?? DEFAULT_PR_KEY;
+    const cached = prStore.get(key);
+    if (cached) return cached;
+    await pollProject(key, ctx.git, ctx.github);
+    return prStore.get(key) ?? { pr: null, checks: [], comments: [], fetchedAt: 0 };
   }
 
   function startPolling() {
@@ -229,10 +253,83 @@ export function createAppConfig(deps: AppDeps) {
     return jsonResponse({ error: message }, status, req);
   }
 
-  async function processAndHighlightDiff(raw: string): Promise<ParsedDiff> {
-    const parsed = parseDiff(raw);
+  /**
+   * Request-scoped project context. Hub mode resolves ?project=<id> against
+   * the registry; single-project mode falls back to the static deps.
+   */
+  type ProjectCtx = {
+    id: string | null;
+    cwd: string;
+    git: GitService;
+    github: GitHubService;
+    actions: MenuItem[];
+    surfaceId?: string;
+  };
+
+  function resolveProject(req: Request): ProjectCtx | Response {
+    const url = new URL(req.url);
+    const pid = url.searchParams.get("project");
+    if (pid && deps.registry) {
+      const entry = deps.registry.get(pid);
+      if (!entry) return errorResponse("Unknown project: " + pid, 404, req);
+      return {
+        id: entry.info.id,
+        cwd: entry.info.cwd,
+        git: entry.git,
+        github: entry.github,
+        actions: entry.actions,
+        surfaceId: entry.info.surfaceId,
+      };
+    }
+    if (git && github && cwd) {
+      return {
+        id: null,
+        cwd,
+        git,
+        github,
+        actions: deps.actions ?? [],
+        surfaceId: defaultSurfaceId,
+      };
+    }
+    return errorResponse("project parameter required", 400, req);
+  }
+
+  type Delivery = { delivered: "cmux" } | { delivered: "clipboard"; text: string };
+
+  /**
+   * Deliver text to the project's agent session. Hub-registered projects
+   * without a cmux surface (or with a dead socket) fall back to a clipboard
+   * response — the frontend copies `text` and tells the user to paste it.
+   * Single-project mode keeps the old behavior of targeting the focused
+   * surface when none was registered.
+   */
+  async function deliverText(
+    ctx: ProjectCtx,
+    text: string,
+    mode: "paste" | "command",
+    surfaceOverride?: string,
+  ): Promise<Delivery> {
+    const surface = surfaceOverride ?? ctx.surfaceId;
+    if (!surface && ctx.id !== null) {
+      return { delivered: "clipboard", text };
+    }
+    try {
+      if (mode === "command") {
+        await cmux.sendCommand(text, surface);
+      } else {
+        await cmux.sendText(text, surface);
+      }
+      return { delivered: "cmux" };
+    } catch (e) {
+      logger.debug("cmux delivery failed, falling back to clipboard:", e);
+      return { delivered: "clipboard", text };
+    }
+  }
+
+  async function processAndHighlightDiff(raw: string, gitSvc: GitService): Promise<ParsedDiff> {
+    const parsed = addWordDiffRanges(parseDiff(raw));
     const paths = parsed.map((f) => f.newPath);
-    const generated = await git.getGeneratedFiles(paths);
+    const generated = await gitSvc.getGeneratedFiles(paths);
     const toHighlight = parsed.filter((f) => !generated.has(f.newPath));
     const highlighted = await highlightDiffFiles(toHighlight);
     const generatedFiles = parsed
@@ -246,12 +343,14 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const url = new URL(req.url);
           const base = url.searchParams.get("base") ?? undefined;
           const target = url.searchParams.get("target") ?? undefined;
-          const raw = await git.getDiff(base, target);
-          const files = await processAndHighlightDiff(raw);
+          const raw = await ctx.git.getDiff(base, target);
+          const files = await processAndHighlightDiff(raw, ctx.git);
           return jsonResponse({ diff: raw, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -263,12 +362,14 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
-          const range = await git.computeDiffRange();
-          const tracked = await git.getDiff(range.base);
-          const untracked = range.includeUntracked ? await git.getUntrackedDiff() : "";
+          const range = await ctx.git.computeDiffRange();
+          const tracked = await ctx.git.getDiff(range.base);
+          const untracked = range.includeUntracked ? await ctx.git.getUntrackedDiff() : "";
           const raw = [tracked, untracked].filter(Boolean).join("\n");
-          const files = await processAndHighlightDiff(raw);
+          const files = await processAndHighlightDiff(raw, ctx.git);
           return jsonResponse({
             diff: raw,
             files,
@@ -285,11 +386,13 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const url = new URL(req.url);
           const base = url.searchParams.get("base") ?? undefined;
           const target = url.searchParams.get("target") ?? undefined;
-          const files = await git.getDiffFiles(base, target);
+          const files = await ctx.git.getDiffFiles(base, target);
           return jsonResponse({ files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -301,13 +404,15 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const url = new URL(req.url);
           const path = url.searchParams.get("path");
           const start = parseInt(url.searchParams.get("start") ?? "1", 10);
           const end = parseInt(url.searchParams.get("end") ?? "1", 10);
           if (!path) return errorResponse("path required", 400);
-          const lines = await git.getFileLines(path, start, end);
+          const lines = await ctx.git.getFileLines(path, start, end);
           const lang = getLangFromPath(path);
           const tokenLines = await highlightLines(lines.join("\n"), lang);
           return jsonResponse({ lines, tokenLines });
@@ -321,10 +426,12 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const url = new URL(req.url);
           const count = parseInt(url.searchParams.get("count") ?? "20", 10);
-          const commits = await git.getLogEntries(count);
+          const commits = await ctx.git.getLogEntries(count);
           return jsonResponse({ commits });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -336,14 +443,16 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const url = new URL(req.url);
           const hash = url.searchParams.get("hash");
           if (!hash) return errorResponse("hash required", 400);
           // Reject non-hex strings to prevent command injection via git show
           if (!/^[0-9a-f]{4,40}$/i.test(hash)) return errorResponse("invalid hash", 400);
-          const raw = await git.getCommitDiff(hash);
-          const files = await processAndHighlightDiff(raw);
+          const raw = await ctx.git.getCommitDiff(hash);
+          const files = await processAndHighlightDiff(raw, ctx.git);
           return jsonResponse({ diff: raw, files });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -355,12 +464,114 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const [branches, current] = await Promise.all([
-            git.getBranches(),
-            git.getCurrentBranch(),
+            ctx.git.getBranches(),
+            ctx.git.getCurrentBranch(),
           ]);
           return jsonResponse({ branches, current });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/projects": {
+      async GET(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.registry) return jsonResponse({ hubMode: false, projects: [] });
+        try {
+          const projects = await deps.registry.summaries((id) => {
+            const data = prStore.get(id);
+            if (!data?.pr) return null;
+            const { number, title, state, url } = data.pr;
+            return { number, title, state, url };
+          });
+          return jsonResponse({ hubMode: true, projects });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/projects/register": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
+        try {
+          const body = (await req.json()) as {
+            cwd?: string;
+            name?: string;
+            harness?: string;
+            surfaceId?: string;
+          };
+          if (!body.cwd || typeof body.cwd !== "string") {
+            return errorResponse("cwd required", 400);
+          }
+          const entry = await deps.registry.register({
+            cwd: body.cwd,
+            name: body.name,
+            harness: body.harness,
+            surfaceId: body.surfaceId,
+          });
+          // Warm the PR cache in the background so the list shows PR state soon
+          pollProject(entry.info.id, entry.git, entry.github).catch(() => {});
+          return jsonResponse({ ok: true, id: entry.info.id, name: entry.info.name });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error", 400);
+        }
+      },
+    },
+
+    "/api/projects/unregister": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
+        try {
+          const body = (await req.json()) as { id?: string; cwd?: string };
+          const target = body.id ?? body.cwd;
+          if (!target) return errorResponse("id or cwd required", 400);
+          const ok = deps.registry.unregister(target);
+          return jsonResponse({ ok });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/projects/heartbeat": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
+        try {
+          const body = (await req.json()) as { id?: string; cwd?: string };
+          const target = body.id ?? body.cwd;
+          if (!target) return errorResponse("id or cwd required", 400);
+          const ok = deps.registry.heartbeat(target);
+          return jsonResponse({ ok });
+        } catch (e) {
+          return errorResponse(e instanceof Error ? e.message : "Unknown error");
+        }
+      },
+    },
+
+    "/api/projects/dismiss": {
+      async POST(req: Request) {
+        const secErr = validateRequest(req, securityConfig);
+        if (secErr) return secErr;
+        if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
+        try {
+          const body = (await req.json()) as { id?: string };
+          if (!body.id) return errorResponse("id required", 400);
+          const ok = deps.registry.dismiss(body.id);
+          prStore.delete(body.id);
+          return jsonResponse({ ok });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -371,23 +582,48 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const hubMode = !!deps.registry;
+        // Hub-level status (no project selected): just enough for the list page
+        const url = new URL(req.url);
+        if (hubMode && !url.searchParams.get("project")) {
+          const reviewFiles = await listReviewFiles(reviewDirs).catch(() => []);
+          return jsonResponse({
+            hubMode,
+            status: "",
+            branch: "",
+            cwd: "",
+            terminalSurface: null,
+            actions: [],
+            hasPlan: false,
+            hasReview: reviewFiles.length > 0,
+            reviewDirs,
+            hasLauncher: false,
+          });
+        }
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const [status, branch, planPath, reviewFiles] = await Promise.all([
-            git.getStatus(),
-            git.getCurrentBranch(),
-            findPlanFile(cwd).catch(() => null),
+            ctx.git.getStatus(),
+            ctx.git.getCurrentBranch(),
+            findPlanFile(ctx.cwd).catch(() => null),
             listReviewFiles(reviewDirs).catch(() => []),
           ]);
+          const entry = ctx.id ? deps.registry?.get(ctx.id) : undefined;
           return jsonResponse({
+            hubMode,
             status,
             branch,
-            cwd,
-            terminalSurface: defaultSurfaceId ?? null,
-            actions: deps.actions ?? [],
+            cwd: ctx.cwd,
+            project: entry
+              ? { id: entry.info.id, name: entry.info.name, status: entry.info.status }
+              : null,
+            terminalSurface: ctx.surfaceId ?? null,
+            actions: ctx.actions,
             hasPlan: planPath !== null,
             hasReview: reviewFiles.length > 0,
             reviewDirs,
-            hasLauncher: !!deps.launcher,
+            hasLauncher: !!deps.launcher && !hubMode,
           });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
@@ -399,8 +635,10 @@ export function createAppConfig(deps: AppDeps) {
       async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
-          const planPath = await findPlanFile(cwd);
+          const planPath = await findPlanFile(ctx.cwd);
           if (!planPath) {
             return jsonResponse({ found: false });
           }
@@ -530,10 +768,12 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const body = (await req.json()) as { text: string; surfaceId?: string };
-          await cmux.sendText(body.text, resolveSurfaceId(body.surfaceId));
-          return jsonResponse({ ok: true });
+          const delivery = await deliverText(ctx, body.text, "paste", body.surfaceId);
+          return jsonResponse({ ok: true, ...delivery });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -544,6 +784,8 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const body = (await req.json()) as {
             file: string;
@@ -552,14 +794,20 @@ export function createAppConfig(deps: AppDeps) {
             comment: string;
             surfaceId?: string;
           };
-          await cmux.sendComment(
-            body.file,
-            body.startLine,
-            body.endLine,
-            body.comment,
-            resolveSurfaceId(body.surfaceId),
-          );
-          return jsonResponse({ ok: true });
+          const range =
+            body.startLine === body.endLine
+              ? `${body.startLine}`
+              : `${body.startLine}-${body.endLine}`;
+          const text =
+            body.startLine === 0 && body.endLine === 0
+              ? `${body.file} ${body.comment}`
+              : `${body.file}:${range} ${body.comment}`;
+          const delivery = await deliverText(ctx, text, "paste", body.surfaceId);
+          if (delivery.delivered === "cmux") {
+            // send_text with \n may not submit in some inputs — press Enter explicitly
+            await cmux.sendKey("Enter", body.surfaceId ?? ctx.surfaceId).catch(() => {});
+          }
+          return jsonResponse({ ok: true, ...delivery });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -570,10 +818,12 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const body = (await req.json()) as { command: string; surfaceId?: string };
-          await cmux.sendCommand(body.command, resolveSurfaceId(body.surfaceId));
-          return jsonResponse({ ok: true });
+          const delivery = await deliverText(ctx, body.command, "command", body.surfaceId);
+          return jsonResponse({ ok: true, ...delivery });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -584,14 +834,15 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
         try {
           const body = (await req.json()) as {
             id: string;
             variables?: Record<string, string>;
             surfaceId?: string;
           };
-          const actions = deps.actions ?? [];
-          const action = findAction(actions, body.id);
+          const action = findAction(ctx.actions, body.id);
           if (!action) {
             return errorResponse("Action not found: " + body.id, 404);
           }
@@ -599,15 +850,15 @@ export function createAppConfig(deps: AppDeps) {
 
           if (actionType === "shell") {
             // Build env variables: built-in + user-provided (only for shell type)
-            const branch = await git.getCurrentBranch().catch(() => "");
-            const diffRange = await git.computeDiffRange().catch(() => null);
+            const branch = await ctx.git.getCurrentBranch().catch(() => "");
+            const diffRange = await ctx.git.computeDiffRange().catch(() => null);
             const base = diffRange?.base ?? "";
             const builtinVars: Record<string, string> = {
-              CMUX_HUB_CWD: cwd,
+              CMUX_HUB_CWD: ctx.cwd,
               CMUX_HUB_GIT_BRANCH: branch,
               CMUX_HUB_GIT_BASE: base,
               CMUX_HUB_PORT: String(securityConfig.port),
-              CMUX_HUB_SURFACE_ID: defaultSurfaceId ?? "",
+              CMUX_HUB_SURFACE_ID: ctx.surfaceId ?? "",
               CMUX_HUB_BROWSER_SURFACE_ID: browserSurfaceId ?? "",
             };
             const allVars = { ...builtinVars, ...body.variables };
@@ -616,7 +867,7 @@ export function createAppConfig(deps: AppDeps) {
             // Execute directly as subshell on server
             const shell = process.env.SHELL || "sh";
             const proc = Bun.spawn([shell, "-c", fullCommand], {
-              cwd,
+              cwd: ctx.cwd,
               stdout: "pipe",
               stderr: "pipe",
             });
@@ -655,12 +906,13 @@ export function createAppConfig(deps: AppDeps) {
           const termCommand = body.variables
             ? buildCommandWithEnv(action.command, body.variables)
             : action.command;
-          if (actionType === "paste") {
-            await cmux.sendText(termCommand, resolveSurfaceId(body.surfaceId));
-          } else {
-            await cmux.sendCommand(termCommand, resolveSurfaceId(body.surfaceId));
-          }
-          return jsonResponse({ ok: true, command: termCommand });
+          const delivery = await deliverText(
+            ctx,
+            termCommand,
+            actionType === "paste" ? "paste" : "command",
+            body.surfaceId,
+          );
+          return jsonResponse({ ok: true, command: termCommand, ...delivery });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");
         }
@@ -871,26 +1123,35 @@ export function createAppConfig(deps: AppDeps) {
     },
 
     "/api/pr": {
-      GET(req: Request) {
+      async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
-        return jsonResponse({ pr: cachedPR });
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
+        const data = await getPRData(ctx);
+        return jsonResponse({ pr: data.pr });
       },
     },
 
     "/api/pr/comments": {
-      GET(req: Request) {
+      async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
-        return jsonResponse({ comments: cachedComments });
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
+        const data = await getPRData(ctx);
+        return jsonResponse({ comments: data.comments });
       },
     },
 
     "/api/ci": {
-      GET(req: Request) {
+      async GET(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
-        return jsonResponse({ checks: cachedChecks });
+        const ctx = resolveProject(req);
+        if (ctx instanceof Response) return ctx;
+        const data = await getPRData(ctx);
+        return jsonResponse({ checks: data.checks });
       },
     },
   };
@@ -1028,8 +1289,10 @@ export function createAppConfig(deps: AppDeps) {
           ws.send(message);
         }
       };
-      planWatcherInstance = createPlanWatcher(cwd, broadcast);
-      planWatcherInstance.start();
+      if (cwd) {
+        planWatcherInstance = createPlanWatcher(cwd, broadcast);
+        planWatcherInstance.start();
+      }
 
       if (reviewDirs.length > 0) {
         reviewWatcherInstance = createReviewWatcher(reviewDirs, broadcast);
@@ -1038,6 +1301,26 @@ export function createAppConfig(deps: AppDeps) {
     },
 
     broadcast(message: string) {
+      for (const ws of wsClients.keys()) {
+        ws.send(message);
+      }
+    },
+
+    /** Hub mode: called by the registry when a project's files/refs change */
+    broadcastDiffUpdated(projectId: string, event: { hasRefChange: boolean }) {
+      const message = JSON.stringify({ type: "diff-updated", project: projectId });
+      for (const ws of wsClients.keys()) {
+        ws.send(message);
+      }
+      if (event.hasRefChange) {
+        const entry = deps.registry?.get(projectId);
+        if (entry) pollProject(projectId, entry.git, entry.github);
+      }
+    },
+
+    /** Hub mode: called by the registry when the project list changes */
+    broadcastProjectsUpdated() {
+      const message = JSON.stringify({ type: "projects-updated" });
       for (const ws of wsClients.keys()) {
         ws.send(message);
       }

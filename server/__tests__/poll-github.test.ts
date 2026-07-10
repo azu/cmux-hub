@@ -57,14 +57,18 @@ function createTestApp(ghRunner: CommandRunner) {
 }
 
 async function getPR(app: ReturnType<typeof createAppConfig>) {
-  const handler = (app.apiRoutes["/api/pr"] as { GET: (req: Request) => Response }).GET;
-  const res = handler(new Request(`http://127.0.0.1:${PORT}/api/pr`, { headers: validHeaders() }));
+  const handler = (app.apiRoutes["/api/pr"] as { GET: (req: Request) => Promise<Response> }).GET;
+  const res = await handler(
+    new Request(`http://127.0.0.1:${PORT}/api/pr`, { headers: validHeaders() }),
+  );
   return (await res.json()) as { pr: typeof PR_DATA | null };
 }
 
 async function getCI(app: ReturnType<typeof createAppConfig>) {
-  const handler = (app.apiRoutes["/api/ci"] as { GET: (req: Request) => Response }).GET;
-  const res = handler(new Request(`http://127.0.0.1:${PORT}/api/ci`, { headers: validHeaders() }));
+  const handler = (app.apiRoutes["/api/ci"] as { GET: (req: Request) => Promise<Response> }).GET;
+  const res = await handler(
+    new Request(`http://127.0.0.1:${PORT}/api/ci`, { headers: validHeaders() }),
+  );
   return (await res.json()) as { checks: unknown[] };
 }
 

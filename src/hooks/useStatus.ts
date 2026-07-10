@@ -10,7 +10,10 @@ export function useStatus() {
 
   return {
     loading: data === null,
+    hubMode: data?.hubMode === true,
     branch: data?.branch ?? "",
+    projectName: data?.project?.name ?? null,
+    projectStatus: data?.project?.status ?? null,
     hasTerminal: data?.terminalSurface != null,
     actions: (data?.actions as MenuItem[] | undefined) ?? [],
     hasPlan: data?.hasPlan ?? false,

@@ -213,6 +213,51 @@ export function createGitService(run: CommandRunner, cwd: string) {
     },
 
     /**
+     * Cheap diff stats for the auto range (same semantics as /api/diff/auto),
+     * used by the hub project list without parsing/highlighting a full diff.
+     */
+    async getAutoDiffStat(): Promise<{
+      filesChanged: number;
+      additions: number;
+      deletions: number;
+    }> {
+      const range = await this.computeDiffRange();
+      const args =
+        range.base === "--cached"
+          ? ["diff", "--numstat", "--cached"]
+          : ["diff", "--numstat", range.base];
+      const raw = await git(args);
+      let filesChanged = 0;
+      let additions = 0;
+      let deletions = 0;
+      for (const line of raw.trim().split("\n")) {
+        if (!line) continue;
+        const [a = "-", d = "-"] = line.split("\t");
+        filesChanged++;
+        // Binary files report "-" for both counts
+        if (a !== "-") additions += parseInt(a, 10) || 0;
+        if (d !== "-") deletions += parseInt(d, 10) || 0;
+      }
+      if (range.includeUntracked) {
+        const untracked = await this.getUntrackedFiles();
+        const MAX_COUNT_SIZE = 1024 * 1024;
+        for (const f of untracked) {
+          filesChanged++;
+          try {
+            const file = Bun.file(path.resolve(cwd, f));
+            if (file.size > MAX_COUNT_SIZE) continue;
+            const content = await file.text();
+            if (content.length === 0) continue;
+            additions += content.split("\n").length - (content.endsWith("\n") ? 1 : 0);
+          } catch {
+            // unreadable/binary — count the file, skip the lines
+          }
+        }
+      }
+      return { filesChanged, additions, deletions };
+    },
+
+    /**
      * Compute the appropriate diff base for the current branch.
      * Returns { base, target } where target is always "HEAD" or "." (working tree).
      */

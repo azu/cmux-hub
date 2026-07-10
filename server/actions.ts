@@ -28,21 +28,14 @@ export function isActionWithInput(
 
 export const DEFAULT_ACTIONS: MenuItem[] = [
   {
-    label: "Commit",
-    type: "shell",
-    command: 'git commit -m "$MSG"',
-    input: { placeholder: "Commit message...", variable: "MSG" },
+    label: "Commit & Push",
+    type: "paste-and-enter",
+    command: "Commit the pending changes with a descriptive message and push to the remote.",
   },
   {
     label: "Create PR",
-    type: "shell",
-    command: 'gh pr create --title "$TITLE"',
-    input: { placeholder: "PR title...", variable: "TITLE" },
-  },
-  {
-    label: "AI Review",
     type: "paste-and-enter",
-    command: 'claude "このPRの変更をレビューしてください" --allowedTools bash',
+    command: "Create a pull request for the current branch with a clear title and summary.",
   },
 ];
 

@@ -2,6 +2,92 @@
 
 A browser-based diff viewer for [cmux](https://cmux.dev). See what changed at a glance — syntax-highlighted diffs, inline review comments, commit history, GitHub PR status, and custom toolbar actions, all streamed in real time via WebSocket.
 
+> **Fork note (`local-hub` branch):** this fork adds a persistent, harness-agnostic
+> **hub mode** — one local server that lists all projects with active agent
+> sessions and shows each one's diff. See [Hub mode](#hub-mode-local-fork) below.
+> `main` tracks the original upstream project.
+
+## Hub mode (local fork)
+
+Hub mode runs one long-lived server (default port `4700`) instead of one server
+per session. Sessions from **any** harness (Claude Code, or anything that can
+run a curl command) register themselves, and the browser UI shows a live
+project list; clicking a project opens its diff.
+
+```bash
+bun install
+bun run hub            # start the hub at http://127.0.0.1:4700
+bun run dev:hub        # same, with hot reload for development
+```
+
+### What's different from upstream
+
+- **Project list** at `/` — projects appear when a session registers, are
+  marked _inactive_ when it ends (they linger for 24h or until dismissed with ✕),
+  and persist across hub restarts (`~/.config/cmux-hub/projects.json`).
+- **Line counts** — total `+/−` added/deleted lines per diff and per file.
+- **Word-level diff emphasis** — the exact words that changed get a darker
+  tint, GitHub-style.
+- **PR link** — when the current branch has a PR, a state chip linking to it
+  shows in the toolbar and in the project list.
+- **Default actions** are `Commit & Push` and `Create PR`, delivered to the
+  agent session as prompts (custom actions still come from
+  `.claude/cmux-hub.json` or `.cmux-hub/actions.json` in the project, falling
+  back to `--actions <file>` passed to the hub).
+- **Clipboard fallback** — inline comments and toolbar actions paste into the
+  cmux terminal when the session registered one; otherwise the text is copied
+  to your clipboard (with a toast) so you can paste it into whatever session
+  is active.
+
+### Registering sessions
+
+The hub learns about "active sessions" via a tiny HTTP API — no plugin needed:
+
+| Endpoint                        | Body                                           | Effect                          |
+| ------------------------------- | ---------------------------------------------- | ------------------------------- |
+| `POST /api/projects/register`   | `{ "cwd", "name?", "harness?", "surfaceId?" }` | Add/activate a project          |
+| `POST /api/projects/unregister` | `{ "cwd" }` or `{ "id" }`                      | Mark inactive (lingers in list) |
+| `POST /api/projects/heartbeat`  | `{ "cwd" }` or `{ "id" }`                      | Refresh `lastSeenAt`            |
+| `POST /api/projects/dismiss`    | `{ "id" }`                                     | Remove from the list            |
+
+**Claude Code** — add to `~/.claude/settings.json` (or a project's
+`.claude/settings.json`):
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 2 -X POST http://127.0.0.1:4700/api/projects/register -H 'Content-Type: application/json' -d \"{\\\"cwd\\\": \\\"$PWD\\\", \\\"harness\\\": \\\"claude-code\\\", \\\"surfaceId\\\": \\\"$CMUX_SURFACE_ID\\\"}\" || true"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -m 2 -X POST http://127.0.0.1:4700/api/projects/unregister -H 'Content-Type: application/json' -d \"{\\\"cwd\\\": \\\"$PWD\\\"}\" || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+`surfaceId` is optional — set it only when the session runs inside cmux so
+comments/actions can be pasted straight into that terminal. Any other harness
+just needs to run the same two curl commands at session start/end (that's the
+point: manual per-harness setup, no plugin coupling).
+
+To keep the hub running permanently on macOS, either leave `bun run hub` in a
+terminal or wrap it in a `launchd` agent.
+
 https://github.com/user-attachments/assets/f5fbfd8b-6473-4f83-882e-967a5ca33205
 
 ![cmux-hub with cmux](docs/img/cmux-hub-overview.png)

@@ -5,6 +5,8 @@ import { CIStatus } from "./components/CIStatus.tsx";
 import { PlanView } from "./components/PlanView.tsx";
 import { ReviewView } from "./components/ReviewView.tsx";
 import { LauncherStatus } from "./components/LauncherStatus.tsx";
+import { ProjectList } from "./components/ProjectList.tsx";
+import { ToastProvider } from "./components/Toast.tsx";
 import { useDiff } from "./hooks/useDiff.ts";
 import { useWebSocket } from "./hooks/useWebSocket.ts";
 import { useHashRoute } from "./hooks/useHashRoute.ts";
@@ -14,7 +16,17 @@ import { useLauncher } from "./hooks/useLauncher.ts";
 import { ReviewQueueProvider } from "./hooks/useReviewQueue.tsx";
 import "./index.css";
 
-export default function App() {
+type RouteInfo = ReturnType<typeof useHashRoute>["route"];
+
+function ProjectWorkspace({
+  route,
+  navigate,
+  hubMode,
+}: {
+  route: RouteInfo;
+  navigate: (path: string) => void;
+  hubMode: boolean;
+}) {
   const {
     diff,
     loading,
@@ -26,13 +38,14 @@ export default function App() {
     selectCommit,
     clearCommit,
   } = useDiff();
-  const { route, navigate } = useHashRoute();
-  const { branch, hasTerminal, actions, hasPlan, hasReview } = useStatus();
+  const { branch, projectName, projectStatus, hasTerminal, actions, hasPlan, hasReview } =
+    useStatus();
   const { prUrl, prTitle, prState, checks, prComments } = usePRData();
   const { hasLauncher, servers } = useLauncher();
 
-  // Establish WebSocket connection (individual hooks subscribe via ws-message events)
-  useWebSocket(() => {});
+  // Build hash paths, prefixed with the project in hub mode
+  const projectPath = (sub: string) =>
+    route.project ? `/p/${route.project}${sub ? `/${sub}` : ""}` : `/${sub}`;
 
   return (
     <ReviewQueueProvider>
@@ -44,15 +57,20 @@ export default function App() {
         )}
         <Toolbar
           branch={branch}
+          projectName={projectName}
+          projectStatus={projectStatus}
           hasTerminal={hasTerminal}
           actions={actions}
+          prUrl={prUrl}
+          prState={prState}
+          onShowProjects={hubMode ? () => navigate("/") : undefined}
           onShowDiff={() => {
-            navigate("/");
+            navigate(projectPath(""));
             clearCommit();
           }}
-          onShowCommitList={() => navigate("/commits")}
-          onShowPlan={hasPlan ? () => navigate("/plan") : undefined}
-          onShowReview={hasReview ? () => navigate("/review") : undefined}
+          onShowCommitList={() => navigate(projectPath("commits"))}
+          onShowPlan={hasPlan ? () => navigate(projectPath("plan")) : undefined}
+          onShowReview={hasReview ? () => navigate(projectPath("review")) : undefined}
         />
         {hasLauncher && servers.length > 0 && <LauncherStatus servers={servers} />}
         <div
@@ -60,11 +78,11 @@ export default function App() {
         >
           {route.page === "plan" ? (
             <div className="pt-4">
-              <PlanView onBack={() => navigate("/")} hasTerminal={hasTerminal} />
+              <PlanView onBack={() => navigate(projectPath(""))} hasTerminal={hasTerminal} />
             </div>
           ) : route.page === "review" ? (
             <div className="pt-4">
-              <ReviewView onBack={() => navigate("/")} hasTerminal={hasTerminal} />
+              <ReviewView onBack={() => navigate(projectPath(""))} hasTerminal={hasTerminal} />
             </div>
           ) : (
             <>
@@ -84,11 +102,11 @@ export default function App() {
                 hasUncommittedChanges={hasUncommittedChanges}
                 prComments={prComments.filter((c) => !c.isResolved)}
                 onSelectCommit={(commit) => {
-                  navigate(`/commit/${commit.hash}`);
+                  navigate(projectPath(`commit/${commit.hash}`));
                   selectCommit(commit);
                 }}
                 onClearCommit={() => {
-                  navigate("/");
+                  navigate(projectPath(""));
                   clearCommit();
                 }}
               />
@@ -97,5 +115,39 @@ export default function App() {
         </div>
       </div>
     </ReviewQueueProvider>
+  );
+}
+
+export default function App() {
+  const { route, navigate } = useHashRoute();
+  const { hubMode, loading } = useStatus();
+
+  // Establish WebSocket connection (individual hooks subscribe via ws-message events)
+  useWebSocket(() => {});
+
+  // Hub mode home: project list. Single mode home: the diff workspace.
+  if (route.page === "home" && (hubMode || loading)) {
+    return (
+      <ToastProvider>
+        <div className="h-screen max-w-full overflow-auto bg-[#0d1117] text-[#c9d1d9] px-4 pb-4">
+          {loading ? (
+            <div className="flex items-center justify-center h-64 text-gray-500">Loading...</div>
+          ) : (
+            <ProjectList onSelectProject={(id) => navigate(`/p/${id}`)} />
+          )}
+        </div>
+      </ToastProvider>
+    );
+  }
+
+  return (
+    <ToastProvider>
+      <ProjectWorkspace
+        key={route.project ?? "single"}
+        route={route}
+        navigate={navigate}
+        hubMode={hubMode}
+      />
+    </ToastProvider>
   );
 }

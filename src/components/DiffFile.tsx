@@ -516,6 +516,19 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
     }
   };
 
+  // Per-file added/deleted line counts (GitHub-style header stat)
+  const fileStat = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    for (const hunk of file.hunks) {
+      for (const line of hunk.lines) {
+        if (line.type === "add") additions++;
+        else if (line.type === "delete") deletions++;
+      }
+    }
+    return { additions, deletions };
+  }, [file.hunks]);
+
   const badge = file.isNew ? "New" : file.isDeleted ? "Deleted" : file.isRenamed ? "Renamed" : null;
 
   const badgeColor = file.isNew
@@ -534,6 +547,12 @@ export function DiffFile({ file, onComment, prComments = [], pendingComments = [
           {collapsed ? "\u25b6" : "\u25bc"}
         </span>
         <span className="text-[#adbac7] font-mono text-sm flex-1">{file.newPath}</span>
+        {(fileStat.additions > 0 || fileStat.deletions > 0) && (
+          <span className="text-xs font-mono select-none" data-testid="file-stat">
+            <span className="text-[#3fb950]">+{fileStat.additions}</span>{" "}
+            <span className="text-[#f85149]">−{fileStat.deletions}</span>
+          </span>
+        )}
         {onComment && (
           <button
             className="text-[#848d97] hover:text-[#58a6ff] text-sm px-4 py-1.5 rounded hover:bg-[#30363d] transition-colors"

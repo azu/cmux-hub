@@ -14,10 +14,19 @@ Default to using Bun instead of Node.js.
 ## Architecture
 
 - `src/cli.ts` — CLI entry point (binary). Resolves target dir, terminal surface, loads actions, starts server, opens cmux browser split
+- `src/hub-main.ts` — Hub mode entry (`bun run hub`, this fork's primary mode). Persistent multi-project server on port 4700; sessions register via `POST /api/projects/register`
 - `src/index.ts` — Dev entry point (simpler, no cmux integration)
-- `server/app.ts` — API routes and WebSocket handling
+- `server/app.ts` — API routes and WebSocket handling. Routes resolve a per-request project context from `?project=<id>` (hub mode) or fall back to the static single-project deps
+- `server/projects.ts` — Hub-mode project registry (register/unregister/dismiss, 24h inactive linger, persistence in `~/.config/cmux-hub/projects.json`)
+- `server/word-diff.ts` — GitHub-style intra-line word diff; emits `wordRanges` on diff lines
 - `server/actions.ts` — Action type definitions, validation, shell escaping
-- `src/components/` — React components (Toolbar, DiffView, DiffFile, DiffLine)
+- `src/components/` — React components (Toolbar, DiffView, DiffFile, DiffLine, ProjectList, Toast)
+
+## Hub mode (this fork)
+
+- Branch `local-hub` carries the fork; `main` tracks upstream.
+- WS events are project-tagged (`diff-updated`/`pr-updated` carry `project`; `projects-updated` fires on list changes). Frontend filters by the project in the hash route (`#/p/<id>/...`), synced to `setApiProject` so every API call gets `?project=`.
+- Comment/action delivery: cmux surface if the session registered one, else the response carries `{ delivered: "clipboard", text }` and the frontend copies it and shows a toast.
 
 ## Actions
 

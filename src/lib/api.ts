@@ -2,8 +2,33 @@ import type { ServerState } from "../../server/launcher.ts";
 
 const BASE_URL = "";
 
+// Hub mode: the project currently being viewed. Set from the hash route
+// before render so every API call is scoped to the right project.
+let currentProject: string | null = null;
+
+export function setApiProject(project: string | null) {
+  currentProject = project;
+}
+
+export function getApiProject(): string | null {
+  return currentProject;
+}
+
+/** How a terminal-bound payload was actually delivered by the server */
+export type DeliveryResult = {
+  ok: boolean;
+  delivered?: "cmux" | "clipboard";
+  text?: string;
+};
+
+function withProject(path: string): string {
+  if (!currentProject) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}project=${encodeURIComponent(currentProject)}`;
+}
+
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(`${BASE_URL}${withProject(path)}`, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -17,7 +42,32 @@ async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+export type ProjectSummary = {
+  id: string;
+  cwd: string;
+  name: string;
+  status: "active" | "inactive";
+  harness?: string;
+  registeredAt: number;
+  lastSeenAt: number;
+  branch: string;
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  pr: { number: number; title: string; state: string; url: string } | null;
+};
+
 export const api = {
+  getProjects() {
+    return fetchJSON<{ hubMode: boolean; projects: ProjectSummary[] }>("/api/projects");
+  },
+
+  dismissProject(id: string) {
+    return fetchJSON<{ ok: boolean }>("/api/projects/dismiss", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    });
+  },
   getDiff(base?: string, target?: string) {
     const params = new URLSearchParams();
     if (base) params.set("base", base);
@@ -70,9 +120,11 @@ export const api = {
 
   getStatus() {
     return fetchJSON<{
+      hubMode?: boolean;
       status: string;
       branch: string;
       cwd: string;
+      project?: { id: string; name: string; status: "active" | "inactive" } | null;
       terminalSurface: string | null;
       actions: import("../../server/actions.ts").MenuItem[];
       hasPlan: boolean;
@@ -110,7 +162,7 @@ export const api = {
   },
 
   sendToTerminal(text: string, surfaceId?: string) {
-    return fetchJSON<{ ok: boolean }>("/api/send-to-terminal", {
+    return fetchJSON<DeliveryResult>("/api/send-to-terminal", {
       method: "POST",
       body: JSON.stringify({ text, surfaceId }),
     });
@@ -123,14 +175,14 @@ export const api = {
     comment: string,
     surfaceId?: string,
   ) {
-    return fetchJSON<{ ok: boolean }>("/api/comment", {
+    return fetchJSON<DeliveryResult>("/api/comment", {
       method: "POST",
       body: JSON.stringify({ file, startLine, endLine, comment, surfaceId }),
     });
   },
 
   sendCommand(command: string, surfaceId?: string) {
-    return fetchJSON<{ ok: boolean }>("/api/command", {
+    return fetchJSON<DeliveryResult>("/api/command", {
       method: "POST",
       body: JSON.stringify({ command, surfaceId }),
     });
@@ -149,7 +201,7 @@ export const api = {
   },
 
   executeAction(id: string, variables?: Record<string, string>, surfaceId?: string) {
-    return fetchJSON<{ ok: boolean; command: string }>("/api/action", {
+    return fetchJSON<DeliveryResult & { command: string }>("/api/action", {
       method: "POST",
       body: JSON.stringify({ id, variables, surfaceId }),
     });

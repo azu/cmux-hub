@@ -2,14 +2,21 @@ import React, { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button.tsx";
 import { Input } from "./ui/input.tsx";
 import { api } from "../lib/api.ts";
+import { handleDelivery } from "../lib/delivery.ts";
 import type { MenuItem, ActionItem } from "../../server/actions.ts";
 import { isSubmenu, isActionWithInput } from "../../server/actions.ts";
 import { useReviewQueue } from "../hooks/useReviewQueue.tsx";
+import { useToast } from "./Toast.tsx";
 
 type Props = {
   branch: string;
+  projectName?: string | null;
+  projectStatus?: "active" | "inactive" | null;
   hasTerminal: boolean;
   actions: MenuItem[];
+  prUrl?: string | null;
+  prState?: string | null;
+  onShowProjects?: () => void;
   onShowCommitList?: () => void;
   onShowPlan?: () => void;
   onShowReview?: () => void;
@@ -29,12 +36,15 @@ function SimpleActionButton({
   onSending: (sending: boolean) => void;
   className?: string;
 }) {
+  const { showToast } = useToast();
   const handleExecute = async () => {
     onSending(true);
     try {
-      await api.executeAction(id);
+      const result = await api.executeAction(id);
+      await handleDelivery(result, showToast);
     } catch (e) {
       console.error("Action failed:", e);
+      showToast(e instanceof Error ? e.message : "Action failed");
     } finally {
       onSending(false);
     }
@@ -117,16 +127,19 @@ function InputRow({
   onClose: () => void;
 }) {
   const [value, setValue] = useState("");
+  const { showToast } = useToast();
 
   const handleExecute = async () => {
     if (!value.trim() || !action.input) return;
     onSending(true);
     try {
-      await api.executeAction(id, { [action.input.variable]: value });
+      const result = await api.executeAction(id, { [action.input.variable]: value });
+      await handleDelivery(result, showToast);
       setValue("");
       onClose();
     } catch (e) {
       console.error("Action failed:", e);
+      showToast(e instanceof Error ? e.message : "Action failed");
     } finally {
       onSending(false);
     }
@@ -154,10 +167,21 @@ function InputRow({
   );
 }
 
+function prStateColor(state: string): string {
+  if (state === "MERGED") return "text-[#a371f7] border-[#a371f7]/40";
+  if (state === "CLOSED") return "text-[#f85149] border-[#f85149]/40";
+  return "text-[#3fb950] border-[#3fb950]/40";
+}
+
 export function Toolbar({
   branch,
+  projectName,
+  projectStatus,
   hasTerminal,
   actions,
+  prUrl,
+  prState,
+  onShowProjects,
   onShowCommitList,
   onShowPlan,
   onShowReview,
@@ -174,12 +198,49 @@ export function Toolbar({
     >
       <div className="flex items-center gap-2 flex-wrap">
         <div className="flex items-center gap-1">
+          {onShowProjects && (
+            <>
+              <button
+                className="text-[#848d97] hover:text-[#c9d1d9] text-sm leading-none"
+                onClick={onShowProjects}
+                title="Back to project list"
+              >
+                ‹ Projects
+              </button>
+              <span className="text-[#30363d]">/</span>
+            </>
+          )}
+          {projectName && (
+            <span className="text-[#c9d1d9] text-sm font-medium leading-none flex items-center gap-1.5">
+              {projectStatus && (
+                <span
+                  className={`w-1.5 h-1.5 rounded-full inline-block ${
+                    projectStatus === "active" ? "bg-[#3fb950]" : "bg-[#848d97]"
+                  }`}
+                  title={projectStatus === "active" ? "Active session" : "Session ended"}
+                />
+              )}
+              {projectName}
+              <span className="text-[#30363d]">/</span>
+            </span>
+          )}
           <button
             className="text-[#58a6ff] hover:text-[#79c0ff] text-sm font-mono leading-none"
             onClick={onShowDiff}
           >
             {branch}
           </button>
+          {prUrl && prState && (
+            <a
+              href={prUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`text-xs border rounded-full px-2 py-0.5 ml-1 hover:underline ${prStateColor(prState)}`}
+              title="Open pull request on GitHub"
+            >
+              PR · {prState.toLowerCase()}
+            </a>
+          )}
           {onShowCommitList && (
             <>
               <span className="text-[#30363d]">/</span>
@@ -215,7 +276,7 @@ export function Toolbar({
           )}
         </div>
         <div className="flex-1" />
-        {hasTerminal && pending.length > 0 && (
+        {pending.length > 0 && (
           <div className="flex items-center gap-1">
             <Button
               size="sm"
@@ -235,61 +296,67 @@ export function Toolbar({
             </Button>
           </div>
         )}
-        {hasTerminal &&
-          actions.map((item, i) => {
-            const id = String(i);
-            if (isSubmenu(item)) {
-              return (
-                <SubmenuButton
-                  key={item.label}
-                  label={item.label}
-                  items={item.submenu}
-                  baseId={id}
-                  disabled={sending}
-                  onSending={setSending}
-                />
-              );
-            }
-            if (isActionWithInput(item)) {
-              return (
-                <Button
-                  key={item.label}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setActiveInput(activeInput === id ? null : id)}
-                >
-                  {item.label}
-                </Button>
-              );
-            }
+        {actions.map((item, i) => {
+          const id = String(i);
+          if (isSubmenu(item)) {
             return (
-              <SimpleActionButton
+              <SubmenuButton
                 key={item.label}
-                id={id}
-                action={item}
+                label={item.label}
+                items={item.submenu}
+                baseId={id}
                 disabled={sending}
                 onSending={setSending}
               />
             );
-          })}
-      </div>
-
-      {hasTerminal &&
-        actions.map((item, i) => {
-          const id = String(i);
-          if (!isActionWithInput(item)) return null;
-          if (activeInput !== id) return null;
+          }
+          if (isActionWithInput(item)) {
+            return (
+              <Button
+                key={item.label}
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveInput(activeInput === id ? null : id)}
+              >
+                {item.label}
+              </Button>
+            );
+          }
           return (
-            <InputRow
+            <SimpleActionButton
               key={item.label}
               id={id}
               action={item}
-              sending={sending}
+              disabled={sending}
               onSending={setSending}
-              onClose={() => setActiveInput(null)}
             />
           );
         })}
+        {!hasTerminal && actions.length > 0 && (
+          <span
+            className="text-[#848d97] text-xs"
+            title="No terminal connected — actions and comments are copied to the clipboard"
+          >
+            📋
+          </span>
+        )}
+      </div>
+
+      {actions.map((item, i) => {
+        const id = String(i);
+        if (!isActionWithInput(item)) return null;
+        if (activeInput !== id) return null;
+        return (
+          <InputRow
+            key={item.label}
+            id={id}
+            action={item}
+            sending={sending}
+            onSending={setSending}
+            onClose={() => setActiveInput(null)}
+          />
+        );
+      })}
     </div>
   );
 }

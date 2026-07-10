@@ -1,10 +1,12 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useMemo } from "react";
 import type { ParsedDiff } from "../lib/diff-parser.ts";
 import type { SelectedCommit } from "../hooks/useDiff.ts";
 import { DiffFile } from "./DiffFile.tsx";
 import { CommitList } from "./CommitList.tsx";
 import { api } from "../lib/api.ts";
+import { handleDelivery } from "../lib/delivery.ts";
 import { useReviewQueue } from "../hooks/useReviewQueue.tsx";
+import { useToast } from "./Toast.tsx";
 import type { CommentMode } from "./CommentForm.tsx";
 
 type PRComment = {
@@ -37,7 +39,6 @@ export function DiffView({
   loading,
   error,
   onRefresh,
-  hasTerminal = false,
   selectedCommit,
   showCommitList,
   hasUncommittedChanges,
@@ -46,6 +47,7 @@ export function DiffView({
   onClearCommit,
 }: Props) {
   const { addToReview, pending } = useReviewQueue();
+  const { showToast } = useToast();
 
   const handleComment = useCallback(
     async (
@@ -59,14 +61,34 @@ export function DiffView({
         addToReview({ file, startLine, endLine, comment });
       } else {
         try {
-          await api.sendComment(file, startLine, endLine, comment);
+          const result = await api.sendComment(file, startLine, endLine, comment);
+          await handleDelivery(result, showToast);
         } catch (e) {
           console.error("Failed to send comment:", e);
+          showToast(e instanceof Error ? e.message : "Failed to send comment");
         }
       }
     },
-    [addToReview],
+    [addToReview, showToast],
   );
+
+  // Total added/deleted line counts across visible files
+  const totals = useMemo(() => {
+    let additions = 0;
+    let deletions = 0;
+    let files = 0;
+    for (const file of diff) {
+      if (file.generated) continue;
+      files++;
+      for (const hunk of file.hunks) {
+        for (const line of hunk.lines) {
+          if (line.type === "add") additions++;
+          else if (line.type === "delete") deletions++;
+        }
+      }
+    }
+    return { additions, deletions, files };
+  }, [diff]);
 
   if (loading && diff.length === 0) {
     return (
@@ -125,13 +147,20 @@ export function DiffView({
           </span>
         </div>
       )}
+      {totals.files > 0 && (
+        <div data-testid="diff-totals" className="pt-3 text-sm text-[#848d97]">
+          {totals.files} changed {totals.files === 1 ? "file" : "files"}{" "}
+          <span className="text-[#3fb950] font-mono">+{totals.additions}</span>{" "}
+          <span className="text-[#f85149] font-mono">−{totals.deletions}</span>
+        </div>
+      )}
       {diff
         .filter((file) => !file.generated)
         .map((file, idx) => (
           <DiffFile
             key={`${file.newPath}-${idx}`}
             file={file}
-            onComment={hasTerminal ? handleComment : undefined}
+            onComment={handleComment}
             prComments={prComments.filter((c) => c.path === file.newPath)}
             pendingComments={pending.filter((c) => c.file === file.newPath)}
           />

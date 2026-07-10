@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useTransition, useRef } from "react";
+import { getApiProject } from "../lib/api.ts";
 
 /**
  * Generic hook for fetching data with WebSocket-triggered refetch.
@@ -74,7 +75,9 @@ export function useWSFetch<T>({
   useEffect(() => {
     if (types.length === 0) return;
     const handler = (e: Event) => {
-      const msg = (e as CustomEvent).detail as { type: string };
+      const msg = (e as CustomEvent).detail as { type: string; project?: string };
+      // Hub mode: project-tagged events only apply to the project being viewed
+      if (msg.project && msg.project !== getApiProject()) return;
       if (types.includes(msg.type)) {
         refetch();
       }

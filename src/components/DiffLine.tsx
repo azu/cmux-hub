@@ -47,6 +47,62 @@ const LINE_TEXT: Record<DiffLineType["type"], string> = {
   header: "text-[#58a6ff]",
 };
 
+// GitHub-style word-level emphasis: a stronger tint on the exact words that
+// changed, layered over the softer line background.
+const WORD_BG: Partial<Record<DiffLineType["type"], string>> = {
+  add: "bg-[#2ea043]/40",
+  delete: "bg-[#f85149]/30",
+};
+
+type Segment = { text: string; color?: string; emphasized: boolean };
+
+/**
+ * Split the line into render segments, cutting syntax-highlight tokens at
+ * word-diff range boundaries so changed words get the emphasis background.
+ * `wordRanges` are sorted, non-overlapping [start, end) offsets in content.
+ */
+function segmentLine(line: DiffLineType): Segment[] {
+  const ranges = line.wordRanges ?? [];
+  const tokens =
+    line.tokens && line.tokens.length > 0
+      ? line.tokens
+      : [{ content: line.content, color: undefined }];
+  const segments: Segment[] = [];
+  let offset = 0;
+  for (const token of tokens) {
+    const start = offset;
+    const end = offset + token.content.length;
+    let cursor = start;
+    for (const [rs, re] of ranges) {
+      if (re <= cursor || rs >= end) continue;
+      const s = Math.max(rs, cursor);
+      const e = Math.min(re, end);
+      if (s > cursor) {
+        segments.push({
+          text: token.content.slice(cursor - start, s - start),
+          color: token.color,
+          emphasized: false,
+        });
+      }
+      segments.push({
+        text: token.content.slice(s - start, e - start),
+        color: token.color,
+        emphasized: true,
+      });
+      cursor = e;
+    }
+    if (cursor < end) {
+      segments.push({
+        text: token.content.slice(cursor - start),
+        color: token.color,
+        emphasized: false,
+      });
+    }
+    offset = end;
+  }
+  return segments;
+}
+
 export function DiffLine({
   line,
   reviewMode,
@@ -97,13 +153,23 @@ export function DiffLine({
       </td>
       <td className={`${prefixColor} w-4 text-center select-none align-top pl-2`}>{prefix}</td>
       <td className={`${textColor} px-2 whitespace-pre-wrap break-all`}>
-        {hasTokens
-          ? line.tokens?.map((token, i) => (
-              <span key={i} style={token.color ? { color: token.color } : undefined}>
-                {token.content}
+        {!reviewMode && line.wordRanges && line.wordRanges.length > 0
+          ? segmentLine(line).map((seg, i) => (
+              <span
+                key={i}
+                className={seg.emphasized ? `${WORD_BG[line.type] ?? ""} rounded-[2px]` : undefined}
+                style={seg.color ? { color: seg.color } : undefined}
+              >
+                {seg.text}
               </span>
             ))
-          : line.content}
+          : hasTokens
+            ? line.tokens?.map((token, i) => (
+                <span key={i} style={token.color ? { color: token.color } : undefined}>
+                  {token.content}
+                </span>
+              ))
+            : line.content}
       </td>
     </tr>
   );

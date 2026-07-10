@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useActionState, startTransition } from "react";
-import { api } from "../lib/api.ts";
+import { api, getApiProject } from "../lib/api.ts";
 import { parseDiff, type ParsedDiff } from "../lib/diff-parser.ts";
 
 export type SelectedCommit = { hash: string; message: string; relativeDate: string };
@@ -88,7 +88,8 @@ export function useDiff() {
   // Listen for diff-updated WebSocket events
   useEffect(() => {
     const handler = (e: Event) => {
-      const msg = (e as CustomEvent).detail as { type: string };
+      const msg = (e as CustomEvent).detail as { type: string; project?: string };
+      if (msg.project && msg.project !== getApiProject()) return;
       if (msg.type === "diff-updated") {
         fetchDiff();
       }

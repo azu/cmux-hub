@@ -11,6 +11,8 @@ export type DiffLine = {
   tokens?: DiffToken[];
   oldLineNumber: number | null;
   newLineNumber: number | null;
+  /** Character ranges [start, end) in `content` that differ from the paired line (word-level diff) */
+  wordRanges?: Array<[number, number]>;
 };
 
 export type DiffHunk = {
