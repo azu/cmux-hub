@@ -137,6 +137,42 @@ describe("project registry", () => {
     registry.stop();
   });
 
+  test("deleting an active project's directory removes it live via watcher events", async () => {
+    const worktreeDir = join(tempRoot, "live-removal-worktree");
+    execSync(`mkdir -p ${worktreeDir}`);
+    gitIn(worktreeDir, "init");
+    gitIn(worktreeDir, "config user.email 't@t.com'");
+    gitIn(worktreeDir, "config user.name 'T'");
+    writeFileSync(join(worktreeDir, "f.ts"), "export {};\n");
+    gitIn(worktreeDir, "add .");
+    gitIn(worktreeDir, "commit -m init");
+
+    let capturedCb: ((event: string, filename: string | null) => void) | null = null;
+    const capturingFactory: WatcherFactory = (_dir, cb) => {
+      capturedCb = cb;
+      return { close: () => {} };
+    };
+    let projectsChangedCount = 0;
+    const registry = createProjectRegistry({
+      runner: defaultCommandRunner,
+      watcherFactory: capturingFactory,
+      persistPath,
+      onProjectsChanged: () => projectsChangedCount++,
+    });
+    const entry = await registry.register({ cwd: worktreeDir });
+    expect(capturedCb).not.toBeNull();
+    projectsChangedCount = 0;
+
+    // Worktree cleanup: directory vanishes, file events fire on the way down
+    rmSync(worktreeDir, { recursive: true, force: true });
+    capturedCb!("rename", "f.ts");
+    await Bun.sleep(400); // FileWatcher debounce is 300ms
+
+    expect(registry.get(entry.info.id)).toBeUndefined();
+    expect(projectsChangedCount).toBeGreaterThan(0);
+    registry.stop();
+  });
+
   test("prune demotes crash-orphaned actives, then drops them after the linger window", async () => {
     const registry = makeRegistry();
     const entry = await registry.register({ cwd: repoDir });

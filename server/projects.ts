@@ -160,6 +160,13 @@ export function createProjectRegistry(deps: RegistryDeps) {
     if (entry.watcher) return;
     const watcher = createFileWatcher(deps.watcherFactory, entry.info.cwd);
     watcher.onChanged((event) => {
+      // Deleting the project directory (e.g. worktree cleanup on session
+      // exit) fires file events on the way down — use them as the push
+      // signal to remove the entry live instead of waiting for a list fetch
+      if (!existsSync(entry.info.cwd)) {
+        if (sweepMissingDirs()) deps.onProjectsChanged?.();
+        return;
+      }
       deps.onDiffChanged?.(entry.info.id, event);
     });
     watcher.start();
@@ -423,7 +430,10 @@ export function createProjectRegistry(deps: RegistryDeps) {
     startPruning() {
       if (pruneTimer) return;
       prune();
-      pruneTimer = setInterval(() => prune(), 60 * 60 * 1000);
+      // 5 min: fallback for missing-dir cleanup when no watcher event fired
+      // (TTL demotion/linger windows are hours, so the cadence is about the
+      // sweep, not them)
+      pruneTimer = setInterval(() => prune(), 5 * 60 * 1000);
     },
 
     stop() {
