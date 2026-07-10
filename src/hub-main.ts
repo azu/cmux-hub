@@ -35,6 +35,7 @@ const { values } = parseArgs({
   options: {
     port: { type: "string", short: "p", default: process.env.PORT ?? DEFAULT_HUB_PORT },
     "dry-run": { type: "boolean", default: process.env.CMUX_HUB_DRY_RUN === "true" },
+    "projects-file": { type: "string" },
     actions: { type: "string", short: "a" },
     debug: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
@@ -77,6 +78,7 @@ if (values.debug) {
 }
 
 const PORT = parseInt(values.port ?? DEFAULT_HUB_PORT, 10);
+const PROJECTS_FILE = values["projects-file"] ?? defaultPersistPath();
 const DRY_RUN = values["dry-run"] ?? false;
 
 // globalThis cache for bun --hot state persistence
@@ -120,7 +122,7 @@ const registry = createProjectRegistry({
   runner: defaultCommandRunner,
   watcherFactory: defaultWatcherFactory,
   hubActions,
-  persistPath: defaultPersistPath(),
+  persistPath: PROJECTS_FILE,
   onDiffChanged: (projectId, event) => app?.broadcastDiffUpdated(projectId, event),
   onProjectsChanged: () => app?.broadcastProjectsUpdated(),
 });
@@ -211,4 +213,4 @@ process.on("SIGINT", cleanup);
 process.on("SIGTERM", cleanup);
 
 logger.info(`cmux-hub (hub mode) running at http://127.0.0.1:${server.port}`);
-logger.info(`Projects file: ${defaultPersistPath()}`);
+logger.info(`Projects file: ${PROJECTS_FILE}`);
