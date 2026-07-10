@@ -3,13 +3,14 @@ import { useWSFetch } from "./useWSFetch.ts";
 import type { MenuItem } from "../../server/actions.ts";
 
 export function useStatus() {
-  const { data } = useWSFetch({
+  const { data, error } = useWSFetch({
     fetch: () => api.getStatus(),
     wsMessageType: ["diff-updated", "plan-updated", "review-updated"],
   });
 
   return {
     loading: data === null,
+    error,
     hubMode: data?.hubMode === true,
     branch: data?.branch ?? "",
     projectName: data?.project?.name ?? null,

@@ -1,6 +1,8 @@
 import React, { useCallback } from "react";
 import { DiffFile } from "./DiffFile.tsx";
 import { api } from "../lib/api.ts";
+import { handleDelivery } from "../lib/delivery.ts";
+import { useToast } from "./Toast.tsx";
 import { usePlanData } from "../hooks/usePlanData.ts";
 
 type Props = {
@@ -10,16 +12,19 @@ type Props = {
 
 export function PlanView({ onBack, hasTerminal = false }: Props) {
   const { files, planPath, loading, error, isPending } = usePlanData();
+  const { showToast } = useToast();
 
   const handleComment = useCallback(
     async (file: string, startLine: number, endLine: number, comment: string) => {
       try {
-        await api.sendComment(file, startLine, endLine, comment);
+        const result = await api.sendComment(file, startLine, endLine, comment);
+        await handleDelivery(result, showToast);
       } catch (e) {
         console.error("Failed to send comment:", e);
+        showToast(e instanceof Error ? e.message : "Failed to send comment");
       }
     },
-    [],
+    [showToast],
   );
 
   if (loading) {

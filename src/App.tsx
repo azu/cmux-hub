@@ -120,13 +120,15 @@ function ProjectWorkspace({
 
 export default function App() {
   const { route, navigate } = useHashRoute();
-  const { hubMode, loading } = useStatus();
+  const { hubMode, loading, error: statusError } = useStatus();
 
   // Establish WebSocket connection (individual hooks subscribe via ws-message events)
   useWebSocket(() => {});
 
   // Hub mode home: project list. Single mode home: the diff workspace.
-  if (route.page === "home" && (hubMode || loading)) {
+  // On a failed status fetch, fall through to the workspace instead of
+  // spinning on "Loading..." forever.
+  if (route.page === "home" && (hubMode || (loading && !statusError))) {
     return (
       <ToastProvider>
         <div className="h-screen max-w-full overflow-auto bg-[#0d1117] text-[#c9d1d9] px-4 pb-4">

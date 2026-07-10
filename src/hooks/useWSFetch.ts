@@ -25,6 +25,11 @@ import { getApiProject } from "../lib/api.ts";
 type UseWSFetchOptions<T> = {
   fetch: () => Promise<T>;
   wsMessageType?: string | string[];
+  /**
+   * Refetch on project-tagged events from ANY project (hub project list).
+   * By default, tagged events only match the project currently being viewed.
+   */
+  matchAllProjects?: boolean;
 };
 
 type UseWSFetchResult<T> = {
@@ -38,6 +43,7 @@ type UseWSFetchResult<T> = {
 export function useWSFetch<T>({
   fetch: fetchFn,
   wsMessageType,
+  matchAllProjects = false,
 }: UseWSFetchOptions<T>): UseWSFetchResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,7 +83,7 @@ export function useWSFetch<T>({
     const handler = (e: Event) => {
       const msg = (e as CustomEvent).detail as { type: string; project?: string };
       // Hub mode: project-tagged events only apply to the project being viewed
-      if (msg.project && msg.project !== getApiProject()) return;
+      if (!matchAllProjects && msg.project && msg.project !== getApiProject()) return;
       if (types.includes(msg.type)) {
         refetch();
       }

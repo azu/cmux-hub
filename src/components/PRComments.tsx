@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { api } from "../lib/api.ts";
+import { handleDelivery } from "../lib/delivery.ts";
+import { useToast } from "./Toast.tsx";
 
 type Comment = {
   id: number;
@@ -18,18 +20,21 @@ type Props = {
 
 export function InlinePRComment({ comment, filePath }: Props) {
   const [sending, setSending] = useState(false);
+  const { showToast } = useToast();
 
   const handleSend = useCallback(async () => {
     setSending(true);
     try {
       const text = `${filePath}:${comment.line} ${comment.body}`;
-      await api.sendToTerminal(text);
+      const result = await api.sendToTerminal(text);
+      await handleDelivery(result, showToast);
     } catch (e) {
       console.error("Failed to send comment to terminal:", e);
+      showToast(e instanceof Error ? e.message : "Failed to send comment");
     } finally {
       setSending(false);
     }
-  }, [comment, filePath]);
+  }, [comment, filePath, showToast]);
 
   return (
     <div className="flex items-start gap-2 py-1 text-sm">

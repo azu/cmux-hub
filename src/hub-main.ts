@@ -36,6 +36,7 @@ const { values } = parseArgs({
     port: { type: "string", short: "p", default: process.env.PORT ?? DEFAULT_HUB_PORT },
     "dry-run": { type: "boolean", default: process.env.CMUX_HUB_DRY_RUN === "true" },
     "projects-file": { type: "string" },
+    "allow-project-shell-actions": { type: "boolean", default: false },
     actions: { type: "string", short: "a" },
     debug: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
@@ -123,6 +124,7 @@ const registry = createProjectRegistry({
   watcherFactory: defaultWatcherFactory,
   hubActions,
   persistPath: PROJECTS_FILE,
+  allowProjectShellActions: values["allow-project-shell-actions"] ?? false,
   onDiffChanged: (projectId, event) => app?.broadcastDiffUpdated(projectId, event),
   onProjectsChanged: () => app?.broadcastProjectsUpdated(),
 });
@@ -178,11 +180,15 @@ const server = serve({
 app.setServer(server);
 app.startWatcher();
 
-// Dev mode: watch src/ files and rebuild frontend on changes
+// Dev mode: watch src/ files and rebuild frontend on changes.
+// Close the previous watcher on bun --hot reload so builds don't stack up.
 if (isDev) {
   const { watch } = await import("node:fs");
+  if (g.__cmuxHubDevWatcher) {
+    (g.__cmuxHubDevWatcher as { close: () => void }).close();
+  }
   let devBuildTimer: ReturnType<typeof setTimeout> | null = null;
-  watch(import.meta.dir, { recursive: true }, (_event, filename) => {
+  const devWatcher = watch(import.meta.dir, { recursive: true }, (_event, filename) => {
     if (!filename || filename.startsWith(".dev-dist")) return;
     if (devBuildTimer) clearTimeout(devBuildTimer);
     devBuildTimer = setTimeout(async () => {
@@ -192,6 +198,7 @@ if (isDev) {
       }
     }, 300);
   });
+  g.__cmuxHubDevWatcher = devWatcher;
 }
 
 async function cleanup() {

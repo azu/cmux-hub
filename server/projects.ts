@@ -28,6 +28,8 @@ export type ProjectInfo = {
   surfaceId?: string;
   registeredAt: number;
   lastSeenAt: number;
+  /** When the project became inactive — anchor for the linger window */
+  inactiveSince?: number;
 };
 
 export type ProjectEntry = {
@@ -51,6 +53,14 @@ export type ProjectRegistry = ReturnType<typeof createProjectRegistry>;
 /** How long inactive projects stay in the list before being pruned */
 const LINGER_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Active projects whose session never unregistered (crashed pane, hub down
+ * at session end) are demoted to inactive after this long without a
+ * register/heartbeat signal, so watchers and GitHub polling don't leak
+ * forever. Long-lived sessions can refresh via POST /api/projects/heartbeat.
+ */
+const ACTIVE_TTL_MS = 24 * 60 * 60 * 1000;
+
 export function defaultPersistPath(): string {
   return path.join(os.homedir(), ".config", "cmux-hub", "projects.json");
 }
@@ -66,15 +76,51 @@ type RegistryDeps = {
   hubActions?: MenuItem[];
   /** JSON file for persisting project metadata across hub restarts */
   persistPath?: string;
+  /**
+   * Allow `type: "shell"` actions from project-local config files. Off by
+   * default: a cloned repo's own .cmux-hub/actions.json must not be able to
+   * run arbitrary commands on the hub server. Hub-level --actions (explicitly
+   * user-provided) may always contain shell actions.
+   */
+  allowProjectShellActions?: boolean;
   /** Called when a project's working tree / refs change */
   onDiffChanged?: (projectId: string, event: ChangeEvent) => void;
   /** Called when the project list itself changes (register/unregister/dismiss) */
   onProjectsChanged?: () => void;
 };
 
+/** Drop shell-type actions from repo-provided config (they run on the server) */
+function stripShellActions(items: MenuItem[], source: string): MenuItem[] {
+  let stripped = 0;
+  const result: MenuItem[] = [];
+  for (const item of items) {
+    if ("submenu" in item) {
+      const submenu = item.submenu.filter((sub) => {
+        if (sub.type === "shell") {
+          stripped++;
+          return false;
+        }
+        return true;
+      });
+      if (submenu.length > 0) result.push({ ...item, submenu });
+    } else if (item.type === "shell") {
+      stripped++;
+    } else {
+      result.push(item);
+    }
+  }
+  if (stripped > 0) {
+    logger.info(
+      `Ignored ${stripped} shell action(s) from ${source} — project-local shell actions are disabled (start the hub with --allow-project-shell-actions to permit them)`,
+    );
+  }
+  return result;
+}
+
 async function loadProjectActions(
   cwd: string,
   hubActions: MenuItem[] | undefined,
+  allowShell: boolean,
 ): Promise<MenuItem[]> {
   // Project-local config wins, then hub-level --actions, then defaults
   const candidates = [
@@ -85,7 +131,8 @@ async function loadProjectActions(
     try {
       const file = Bun.file(candidate);
       if (await file.exists()) {
-        return validateActions(JSON.parse(await file.text()));
+        const actions = validateActions(JSON.parse(await file.text()));
+        return allowShell ? actions : stripShellActions(actions, candidate);
       }
     } catch (e) {
       logger.info("Invalid actions file, ignoring:", candidate, e instanceof Error ? e.message : e);
@@ -130,7 +177,11 @@ export function createProjectRegistry(deps: RegistryDeps) {
       git: createGitService(deps.runner, info.cwd),
       github: createGitHubService(deps.runner, info.cwd),
       watcher: null,
-      actions: await loadProjectActions(info.cwd, deps.hubActions),
+      actions: await loadProjectActions(
+        info.cwd,
+        deps.hubActions,
+        deps.allowProjectShellActions ?? false,
+      ),
     };
     entries.set(info.id, entry);
     if (info.status === "active") startWatcher(entry);
@@ -146,10 +197,67 @@ export function createProjectRegistry(deps: RegistryDeps) {
     }
   }
 
+  // In-flight register() calls, keyed by project id
+  const registerLocks = new Map<string, Promise<ProjectEntry>>();
+
+  async function doRegister(
+    id: string,
+    cwd: string,
+    input: { name?: string; harness?: string; surfaceId?: string },
+  ): Promise<ProjectEntry> {
+    if (!(await isGitRepo(cwd))) throw new Error("Not a git repository: " + cwd);
+    const now = Date.now();
+    let entry = entries.get(id);
+    if (entry) {
+      entry.info.status = "active";
+      entry.info.lastSeenAt = now;
+      entry.info.inactiveSince = undefined;
+      if (input.name) entry.info.name = input.name;
+      if (input.harness) entry.info.harness = input.harness;
+      // Re-registration always overwrites the surface — a new session may
+      // run in a different terminal (or none at all)
+      entry.info.surfaceId = input.surfaceId;
+      // Reload actions so config edits are picked up on new sessions
+      entry.actions = await loadProjectActions(
+        cwd,
+        deps.hubActions,
+        deps.allowProjectShellActions ?? false,
+      );
+      startWatcher(entry);
+    } else {
+      entry = await createEntry({
+        id,
+        cwd,
+        name: input.name ?? path.basename(cwd),
+        status: "active",
+        harness: input.harness,
+        surfaceId: input.surfaceId,
+        registeredAt: now,
+        lastSeenAt: now,
+      });
+    }
+    persist();
+    deps.onProjectsChanged?.();
+    logger.info("registry: registered", cwd, "as", id);
+    return entry;
+  }
+
   function prune(now = Date.now()) {
     let changed = false;
     for (const [id, entry] of entries) {
-      if (entry.info.status === "inactive" && now - entry.info.lastSeenAt > LINGER_MS) {
+      // Demote crash-orphaned actives (no unregister/heartbeat ever arrived)
+      // so their watchers and GitHub polling don't leak forever
+      if (entry.info.status === "active" && now - entry.info.lastSeenAt > ACTIVE_TTL_MS) {
+        entry.info.status = "inactive";
+        entry.info.inactiveSince = now;
+        stopWatcher(entry);
+        changed = true;
+        logger.debug("registry: demoted stale active project", entry.info.cwd);
+      }
+      if (
+        entry.info.status === "inactive" &&
+        now - (entry.info.inactiveSince ?? entry.info.lastSeenAt) > LINGER_MS
+      ) {
         stopWatcher(entry);
         entries.delete(id);
         changed = true;
@@ -186,38 +294,22 @@ export function createProjectRegistry(deps: RegistryDeps) {
     }): Promise<ProjectEntry> {
       const cwd = path.resolve(input.cwd);
       if (!existsSync(cwd)) throw new Error("Directory does not exist: " + cwd);
-      if (!(await isGitRepo(cwd))) throw new Error("Not a git repository: " + cwd);
 
+      // Serialize registrations per project: concurrent register calls for
+      // the same cwd (e.g. hooks firing from two panes) would otherwise both
+      // pass the entries.get() check and leak an unreachable watcher.
       const id = projectIdForCwd(cwd);
-      const now = Date.now();
-      let entry = entries.get(id);
-      if (entry) {
-        entry.info.status = "active";
-        entry.info.lastSeenAt = now;
-        if (input.name) entry.info.name = input.name;
-        if (input.harness) entry.info.harness = input.harness;
-        // Re-registration always overwrites the surface — a new session may
-        // run in a different terminal (or none at all)
-        entry.info.surfaceId = input.surfaceId;
-        // Reload actions so config edits are picked up on new sessions
-        entry.actions = await loadProjectActions(cwd, deps.hubActions);
-        startWatcher(entry);
-      } else {
-        entry = await createEntry({
-          id,
-          cwd,
-          name: input.name ?? path.basename(cwd),
-          status: "active",
-          harness: input.harness,
-          surfaceId: input.surfaceId,
-          registeredAt: now,
-          lastSeenAt: now,
-        });
+      const previous = registerLocks.get(id);
+      const task = (async () => {
+        if (previous) await previous.catch(() => {});
+        return doRegister(id, cwd, input);
+      })();
+      registerLocks.set(id, task);
+      try {
+        return await task;
+      } finally {
+        if (registerLocks.get(id) === task) registerLocks.delete(id);
       }
-      persist();
-      deps.onProjectsChanged?.();
-      logger.info("registry: registered", cwd, "as", id);
-      return entry;
     },
 
     unregister(idOrCwd: string): boolean {
@@ -225,6 +317,7 @@ export function createProjectRegistry(deps: RegistryDeps) {
       if (!entry) return false;
       entry.info.status = "inactive";
       entry.info.lastSeenAt = Date.now();
+      entry.info.inactiveSince = entry.info.lastSeenAt;
       stopWatcher(entry);
       persist();
       deps.onProjectsChanged?.();
@@ -300,6 +393,9 @@ export function createProjectRegistry(deps: RegistryDeps) {
         return b.lastSeenAt - a.lastSeenAt;
       });
     },
+
+    /** Demote stale actives and drop expired inactives. Exposed for tests. */
+    prune,
 
     startPruning() {
       if (pruneTimer) return;

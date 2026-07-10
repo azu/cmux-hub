@@ -69,7 +69,22 @@ type AppDeps = {
  */
 export function createAppConfig(deps: AppDeps) {
   const { port, git, cmux, github, cwd, defaultSurfaceId, browserSurfaceId } = deps;
-  const securityConfig = { port };
+  // Hub mode serves multiple repos — restrict to the hub's own origin instead
+  // of the single-mode any-localhost-port allowance (used by preview pages)
+  const securityConfig = { port, strictOrigin: !!deps.registry };
+
+  /**
+   * Registration endpoints are for session hooks (curl), not browser pages.
+   * Browsers always attach Origin and/or Sec-Fetch-Site to cross-origin
+   * POSTs; rejecting requests that carry them stops a malicious localhost
+   * page from registering arbitrary repos to read their files/diffs.
+   */
+  function rejectBrowserRegistration(req: Request): Response | null {
+    if (req.headers.get("origin") || req.headers.get("sec-fetch-site")) {
+      return errorResponse("Registration is only allowed from non-browser clients", 403, req);
+    }
+    return null;
+  }
 
   function resolveSurfaceId(surfaceId?: string): string | undefined {
     return surfaceId ?? defaultSurfaceId;
@@ -172,6 +187,9 @@ export function createAppConfig(deps: AppDeps) {
         comments = prev?.comments ?? [];
       }
     }
+    // The project may have been dismissed/pruned while this fetch was in
+    // flight — don't resurrect its cache entry
+    if (key !== DEFAULT_PR_KEY && deps.registry && !deps.registry.get(key)) return;
     prStore.set(key, { pr, checks, comments, fetchedAt: Date.now() });
     const message = JSON.stringify({
       type: "pr-updated",
@@ -185,6 +203,10 @@ export function createAppConfig(deps: AppDeps) {
 
   async function pollGitHub() {
     if (deps.registry) {
+      // GC cache entries for projects that were dismissed or pruned
+      for (const key of prStore.keys()) {
+        if (key !== DEFAULT_PR_KEY && !deps.registry.get(key)) prStore.delete(key);
+      }
       await Promise.all(deps.registry.active().map((e) => pollProject(e.info.id, e.git, e.github)));
       return;
     }
@@ -193,13 +215,23 @@ export function createAppConfig(deps: AppDeps) {
     }
   }
 
-  /** Read PR data for a project, fetching on demand when nothing is cached yet */
+  /** Cache freshness window for on-demand PR reads (inactive projects aren't polled) */
+  const PR_STALE_MS = 60_000;
+  // In-flight on-demand fetches, deduped per project
+  const prInflight = new Map<string, Promise<void>>();
+
+  /** Read PR data for a project, fetching when the cache is missing or stale */
   async function getPRData(ctx: ProjectCtx): Promise<PRStoreEntry> {
     const key = ctx.id ?? DEFAULT_PR_KEY;
     const cached = prStore.get(key);
-    if (cached) return cached;
-    await pollProject(key, ctx.git, ctx.github);
-    return prStore.get(key) ?? { pr: null, checks: [], comments: [], fetchedAt: 0 };
+    if (cached && Date.now() - cached.fetchedAt < PR_STALE_MS) return cached;
+    let inflight = prInflight.get(key);
+    if (!inflight) {
+      inflight = pollProject(key, ctx.git, ctx.github).finally(() => prInflight.delete(key));
+      prInflight.set(key, inflight);
+    }
+    await inflight;
+    return prStore.get(key) ?? cached ?? { pr: null, checks: [], comments: [], fetchedAt: 0 };
   }
 
   function startPolling() {
@@ -501,6 +533,8 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const browserErr = rejectBrowserRegistration(req);
+        if (browserErr) return browserErr;
         if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
         try {
           const body = (await req.json()) as {
@@ -531,6 +565,8 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const browserErr = rejectBrowserRegistration(req);
+        if (browserErr) return browserErr;
         if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
         try {
           const body = (await req.json()) as { id?: string; cwd?: string };
@@ -548,6 +584,8 @@ export function createAppConfig(deps: AppDeps) {
       async POST(req: Request) {
         const secErr = validateRequest(req, securityConfig);
         if (secErr) return secErr;
+        const browserErr = rejectBrowserRegistration(req);
+        if (browserErr) return browserErr;
         if (!deps.registry) return errorResponse("Hub mode not enabled", 404);
         try {
           const body = (await req.json()) as { id?: string; cwd?: string };
@@ -569,8 +607,11 @@ export function createAppConfig(deps: AppDeps) {
         try {
           const body = (await req.json()) as { id?: string };
           if (!body.id) return errorResponse("id required", 400);
+          // Resolve first so the PR cache is deleted by canonical id even
+          // when the caller passed a cwd path
+          const entry = deps.registry.resolve(body.id);
           const ok = deps.registry.dismiss(body.id);
-          prStore.delete(body.id);
+          if (entry) prStore.delete(entry.info.id);
           return jsonResponse({ ok });
         } catch (e) {
           return errorResponse(e instanceof Error ? e.message : "Unknown error");

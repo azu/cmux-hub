@@ -6,7 +6,27 @@
 type SecurityConfig = {
   port: number;
   allowedHosts?: string[];
+  /**
+   * When true, only the server's own origin is accepted (hub mode). The
+   * permissive any-localhost-origin behavior exists for single-project mode
+   * where preview pages on other ports call back into cmux-hub; hub mode has
+   * no preview feature and serves multiple repos, so a malicious page on
+   * another localhost port must not be able to read diffs or trigger writes.
+   */
+  strictOrigin?: boolean;
 };
+
+function isLocalhostName(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function isAllowedOriginUrl(url: URL, config: SecurityConfig): boolean {
+  if (!isLocalhostName(url.hostname)) return false;
+  if (config.strictOrigin) {
+    return url.port === String(config.port);
+  }
+  return true;
+}
 
 /**
  * Validate the Host header to prevent DNS rebinding attacks.
@@ -30,12 +50,12 @@ export function isValidHost(hostHeader: string | null, config: SecurityConfig): 
 /**
  * Validate the Origin header for CORS and CSWSH protection.
  */
-export function isValidOrigin(origin: string | null, _config: SecurityConfig): boolean {
+export function isValidOrigin(origin: string | null, config: SecurityConfig): boolean {
   if (!origin) return true; // same-origin GET requests may not include Origin
   // Allow any localhost origin (preview pages on different ports need to reach cmux-hub)
+  // unless strictOrigin restricts to the server's own origin (hub mode).
   try {
-    const url = new URL(origin);
-    return url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+    return isAllowedOriginUrl(new URL(origin), config);
   } catch {
     return false;
   }
@@ -133,12 +153,7 @@ export function corsHeaders(
   let allowOrigin = `http://localhost:${config.port}`;
   if (requestOrigin) {
     try {
-      const url = new URL(requestOrigin);
-      if (
-        url.hostname === "localhost" ||
-        url.hostname === "127.0.0.1" ||
-        url.hostname === "[::1]"
-      ) {
+      if (isAllowedOriginUrl(new URL(requestOrigin), config)) {
         allowOrigin = requestOrigin;
       }
     } catch {

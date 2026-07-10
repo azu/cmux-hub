@@ -26,6 +26,9 @@ export function ProjectList({ onSelectProject }: Props) {
   const { data, loading, refetch } = useWSFetch({
     fetch: () => api.getProjects(),
     wsMessageType: ["projects-updated", "diff-updated", "pr-updated"],
+    // The list aggregates every project — tagged events from any of them
+    // should refresh the stats
+    matchAllProjects: true,
   });
 
   const handleDismiss = useCallback(

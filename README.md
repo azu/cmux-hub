@@ -85,6 +85,32 @@ comments/actions can be pasted straight into that terminal. Any other harness
 just needs to run the same two curl commands at session start/end (that's the
 point: manual per-harness setup, no plugin coupling).
 
+Lifecycle notes:
+
+- If a session dies without unregistering, its project is demoted to
+  _inactive_ after 24h without a register/heartbeat signal (watchers and PR
+  polling stop). Long-lived sessions can `POST /api/projects/heartbeat`
+  periodically to stay active.
+- Inactive projects are pruned 24h after they became inactive, or immediately
+  via ✕ in the UI.
+
+Security model (hub mode):
+
+- Registration endpoints (`register`/`unregister`/`heartbeat`) only accept
+  non-browser clients — requests carrying `Origin`/`Sec-Fetch-Site` headers
+  are rejected, so a malicious localhost web page cannot register arbitrary
+  repos to read their diffs.
+- Hub mode restricts allowed origins to the hub's own origin (single-project
+  mode keeps the any-localhost-port allowance needed for preview pages).
+- `type: "shell"` actions in a repo's own `.claude/cmux-hub.json` /
+  `.cmux-hub/actions.json` are **ignored** (they would execute on the server
+  from repo-controlled files). Start the hub with
+  `--allow-project-shell-actions` if you want them, or define shell actions in
+  the hub-level `--actions` file, which is always trusted.
+- Register only repos you actually work in: running git in a repo executes
+  repo-controlled config like `core.fsmonitor` — the same exposure your shell
+  and agent already have in that directory, but worth knowing.
+
 To keep the hub running permanently on macOS, either leave `bun run hub` in a
 terminal or wrap it in a `launchd` agent.
 

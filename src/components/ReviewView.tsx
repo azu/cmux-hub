@@ -2,6 +2,8 @@ import React, { useCallback } from "react";
 import { DiffFile } from "./DiffFile.tsx";
 import type { CommentMode } from "./CommentForm.tsx";
 import { api } from "../lib/api.ts";
+import { handleDelivery } from "../lib/delivery.ts";
+import { useToast } from "./Toast.tsx";
 import { useReviewData } from "../hooks/useReviewData.ts";
 import { useReviewQueue } from "../hooks/useReviewQueue.tsx";
 
@@ -13,6 +15,7 @@ type Props = {
 export function ReviewView({ onBack, hasTerminal = false }: Props) {
   const { files, reviewDirs, loading, error, isPending, refetch } = useReviewData();
   const { addToReview } = useReviewQueue();
+  const { showToast } = useToast();
 
   const handleComment = useCallback(
     async (
@@ -27,12 +30,14 @@ export function ReviewView({ onBack, hasTerminal = false }: Props) {
         return;
       }
       try {
-        await api.sendComment(file, startLine, endLine, comment);
+        const result = await api.sendComment(file, startLine, endLine, comment);
+        await handleDelivery(result, showToast);
       } catch (e) {
         console.error("Failed to send review comment:", e);
+        showToast(e instanceof Error ? e.message : "Failed to send comment");
       }
     },
-    [addToReview],
+    [addToReview, showToast],
   );
 
   const handleDelete = useCallback(
