@@ -87,6 +87,11 @@ point: manual per-harness setup, no plugin coupling).
 
 Lifecycle notes:
 
+- Git worktrees are first-class: register whatever directory the session runs
+  in, including `.claude/worktrees/*` checkouts.
+- If a project's directory disappears (e.g. a worktree cleaned up on session
+  exit, before the SessionEnd hook could unregister), the entry is removed
+  automatically — on the next list view and on the hourly sweep.
 - If a session dies without unregistering, its project is demoted to
   _inactive_ after 24h without a register/heartbeat signal (watchers and PR
   polling stop). Long-lived sessions can `POST /api/projects/heartbeat`

@@ -242,8 +242,26 @@ export function createProjectRegistry(deps: RegistryDeps) {
     return entry;
   }
 
+  /**
+   * Drop entries whose directory no longer exists — e.g. a session ran in a
+   * git worktree that was cleaned up on exit, before its SessionEnd hook
+   * could unregister. There is nothing left to diff, so remove immediately.
+   */
+  function sweepMissingDirs(): boolean {
+    let removed = false;
+    for (const [id, entry] of entries) {
+      if (existsSync(entry.info.cwd)) continue;
+      stopWatcher(entry);
+      entries.delete(id);
+      removed = true;
+      logger.info("registry: removed project with missing directory:", entry.info.cwd);
+    }
+    if (removed) persist();
+    return removed;
+  }
+
   function prune(now = Date.now()) {
-    let changed = false;
+    let changed = sweepMissingDirs();
     for (const [id, entry] of entries) {
       // Demote crash-orphaned actives (no unregister/heartbeat ever arrived)
       // so their watchers and GitHub polling don't leak forever
@@ -367,6 +385,11 @@ export function createProjectRegistry(deps: RegistryDeps) {
      * by the caller (app-level PR cache) to keep polling in one place.
      */
     async summaries(prLookup?: (id: string) => ProjectSummary["pr"]): Promise<ProjectSummary[]> {
+      // Self-heal on view: deleted worktrees/dirs disappear from the list
+      // immediately instead of waiting for the hourly prune. No
+      // onProjectsChanged broadcast — the response already reflects it, and
+      // broadcasting from the read path would trigger a refetch loop.
+      sweepMissingDirs();
       const list = await Promise.all(
         [...entries.values()].map(async (entry) => {
           let branch = "";

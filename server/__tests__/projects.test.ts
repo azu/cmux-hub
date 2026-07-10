@@ -106,6 +106,37 @@ describe("project registry", () => {
     registry.stop();
   });
 
+  test("projects whose directory disappears are removed automatically", async () => {
+    // A session in a git worktree that gets cleaned up on exit leaves an
+    // entry pointing at a deleted directory — the registry must self-heal
+    const worktreeDir = join(tempRoot, "ephemeral-worktree");
+    execSync(`mkdir -p ${worktreeDir}`);
+    gitIn(worktreeDir, "init");
+    gitIn(worktreeDir, "config user.email 't@t.com'");
+    gitIn(worktreeDir, "config user.name 'T'");
+    writeFileSync(join(worktreeDir, "f.ts"), "export {};\n");
+    gitIn(worktreeDir, "add .");
+    gitIn(worktreeDir, "commit -m init");
+
+    const registry = makeRegistry();
+    const entry = await registry.register({ cwd: worktreeDir });
+    expect(entry.info.status).toBe("active");
+
+    rmSync(worktreeDir, { recursive: true, force: true });
+
+    // Self-heals on list fetch...
+    const summaries = await registry.summaries();
+    expect(summaries.some((p) => p.id === entry.info.id)).toBe(false);
+    expect(registry.get(entry.info.id)).toBeUndefined();
+
+    // ...and the shared repo is untouched
+    await registry.register({ cwd: repoDir });
+    registry.prune();
+    expect(registry.get(projectIdForCwd(repoDir))).toBeDefined();
+    registry.dismiss(projectIdForCwd(repoDir));
+    registry.stop();
+  });
+
   test("prune demotes crash-orphaned actives, then drops them after the linger window", async () => {
     const registry = makeRegistry();
     const entry = await registry.register({ cwd: repoDir });
