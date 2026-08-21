@@ -13,6 +13,7 @@ import { loadActions, DEFAULT_ACTIONS } from "../server/actions.ts";
 import type { MenuItem } from "../server/actions.ts";
 import { loadLaunchJson, createLauncher } from "../server/launcher.ts";
 import type { Launcher } from "../server/launcher.ts";
+import { resolveTargetDir } from "./lib/target-dir.ts";
 import {
   resolveDefaultReviewDir,
   resolveReviewDirs,
@@ -185,27 +186,28 @@ if (values.actions) {
   }
 }
 
-// Determine target directory
-async function resolveTargetDir(): Promise<string> {
-  if (positionals.length > 0) {
-    return positionals[0]!;
-  }
-
-  // Try cmux sidebar-state for focused pane cwd
+async function getFocusedCwd(): Promise<string | undefined> {
   try {
     const proc = Bun.spawn([CMUX_BIN, "sidebar-state"], { stdout: "pipe", stderr: "pipe" });
     const output = await new Response(proc.stdout).text();
-    await proc.exited;
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) return undefined;
     const match = /^focused_cwd=(.+)$/m.exec(output);
     if (match?.[1]) return match[1];
   } catch {
     // cmux not available
   }
-
-  return process.cwd();
+  return undefined;
 }
 
-const CWD = await resolveTargetDir();
+// Explicit target wins. When launched inside a linked Git worktree, keep the
+// process cwd instead of replacing it with a stale cmux focused_cwd.
+const CWD = await resolveTargetDir({
+  explicitTarget: positionals[0],
+  processCwd: process.cwd(),
+  run: defaultCommandRunner,
+  getFocusedCwd,
+});
 
 const git = createGitService(defaultCommandRunner, CWD);
 const connector = DRY_RUN ? createDryRunConnector() : createSocketConnector();

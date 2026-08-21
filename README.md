@@ -94,6 +94,9 @@ cmux-hub --actions actions.json
 cat actions.json | cmux-hub --actions -
 ```
 
+When run without `target_dir` from a linked Git worktree, cmux-hub watches that worktree even
+if cmux reports a different focused working directory.
+
 ### Usage with cmux + Claude Code
 
 When launched inside cmux, cmux-hub automatically opens a browser split pane and shuts down when the pane closes.
