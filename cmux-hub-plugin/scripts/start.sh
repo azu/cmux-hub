@@ -44,4 +44,9 @@ LOG_FILE="${LOG_DIR}/${PROJECT_NAME}-${TIMESTAMP}.log"
 CMUX_HUB="${HOME}/.local/bin/cmux-hub"
 echo "[${TIMESTAMP}] Starting cmux-hub (pwd: $PWD)" >> "$LOG_FILE"
 "$CMUX_HUB" --actions "$ACTIONS" >> "$LOG_FILE" 2>&1 &
+CMUX_HUB_PID=$!
 disown
+
+# Save PID for cleanup on session end
+PID_FILE="${LOG_DIR}/cmux-hub-${CMUX_SURFACE_ID}.pid"
+echo "$CMUX_HUB_PID" > "$PID_FILE"
