@@ -66,6 +66,8 @@ export function createGitHubService(run: CommandRunner, cwd: string) {
       const raw = await gh([
         "api",
         `repos/${owner}/${repo}/pulls`,
+        "--method",
+        "GET",
         "--cache",
         "30s",
         "-f",
