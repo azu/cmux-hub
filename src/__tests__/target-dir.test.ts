@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CommandRunner } from "../../server/git.ts";
-import { isLinkedWorktree, resolveTargetDir } from "../lib/target-dir.ts";
+import { isGitWorkTree, isLinkedWorktree, resolveTargetDir } from "../lib/target-dir.ts";
 
 function gitDirs(gitDir: string, commonDir: string): CommandRunner {
   return async () => `${gitDir}\n${commonDir}\n`;
@@ -25,6 +25,23 @@ describe("isLinkedWorktree", () => {
       throw new Error("not a git repository");
     };
     expect(await isLinkedWorktree(run, "/tmp")).toBe(false);
+  });
+});
+
+describe("isGitWorkTree", () => {
+  test("detects a git work tree", async () => {
+    expect(await isGitWorkTree(async () => "true\n", "/repo")).toBe(true);
+  });
+
+  test("returns false inside a .git directory", async () => {
+    expect(await isGitWorkTree(async () => "false\n", "/repo/.git")).toBe(false);
+  });
+
+  test("returns false outside a git repository", async () => {
+    const run: CommandRunner = async () => {
+      throw new Error("not a git repository");
+    };
+    expect(await isGitWorkTree(run, "/tmp")).toBe(false);
   });
 });
 

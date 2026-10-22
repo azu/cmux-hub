@@ -13,7 +13,7 @@ import { loadActions, DEFAULT_ACTIONS } from "../server/actions.ts";
 import type { MenuItem } from "../server/actions.ts";
 import { loadLaunchJson, createLauncher } from "../server/launcher.ts";
 import type { Launcher } from "../server/launcher.ts";
-import { resolveTargetDir } from "./lib/target-dir.ts";
+import { isGitWorkTree, resolveTargetDir } from "./lib/target-dir.ts";
 import {
   resolveDefaultReviewDir,
   resolveReviewDirs,
@@ -208,6 +208,12 @@ const CWD = await resolveTargetDir({
   run: defaultCommandRunner,
   getFocusedCwd,
 });
+
+// Every view is git-backed; outside a work tree git only returns errors.
+if (!(await isGitWorkTree(defaultCommandRunner, CWD))) {
+  console.error(`cmux-hub: not a git repository: ${CWD}`);
+  process.exit(1);
+}
 
 const git = createGitService(defaultCommandRunner, CWD);
 const connector = DRY_RUN ? createDryRunConnector() : createSocketConnector();

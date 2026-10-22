@@ -19,6 +19,15 @@ export async function isLinkedWorktree(run: CommandRunner, cwd: string): Promise
   }
 }
 
+export async function isGitWorkTree(run: CommandRunner, cwd: string): Promise<boolean> {
+  try {
+    const output = await run(["git", "rev-parse", "--is-inside-work-tree"], { cwd });
+    return output.trim() === "true";
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveTargetDir(options: ResolveTargetDirOptions): Promise<string> {
   if (options.explicitTarget) return options.explicitTarget;
 
